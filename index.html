@@ -232,7 +232,7 @@
       <span class="icon-camp">🏕️</span>
       <span>LÁN TRẠI LÀNG VÂN</span>
       <span class="capacity-info">(350 Phòng - Sức chứa 7000)</span>
-      <span id="syncIndicator" style="font-size: 0.7rem; color: #16a34a; font-weight: normal; margin-left: 8px; cursor: pointer;" onclick="forceFullResync()" title="Bấm để tải lại mới nhất">🟢 Đang khởi tạo...</span>
+      <span id="syncIndicator" style="font-size: 0.7rem; color: #16a34a; font-weight: normal; margin-left: 8px; cursor: pointer;" onclick="forceFullResync()" title="Bấm vào đây để ép buộc đồng bộ dữ liệu mới nhất">🟢 Đang khởi tạo...</span>
     </div>
     <div>
       <button id="btnTopAdmin" onclick="openAdminPanelClick()" class="btn" style="background:#334155; color:white; font-size:0.7rem; display:none;">🛡️ Quản Trị</button>
@@ -976,6 +976,7 @@
           currentUserRole = 'viewer';
         }
         updateUIPermissions();
+        syncAllRoomsInBackground();
       });
 
       window.firestoreDb.ref('system_members').on('value', (snap) => {
@@ -1179,7 +1180,7 @@
       return str.replace(/\D/g, '');
     }
 
-    // ==================== 6. ĐỒNG BỘ NGUYÊN TỬ & DELTA SYNC CHUNKING ====================
+    // ==================== 6. ĐỒNG BỘ NGUYÊN TỬ & DELTA SYNC HOÀN CHỈNH ====================
     async function syncSingleRoom(roomId) {
       persistLocalState();
       updateDashboardStats();
@@ -1216,14 +1217,15 @@
       }
     }
 
-    // BẮT BUỘC ĐỒNG BỘ LẠI TỪ SERVER CHO ĐIỆN THOẠI
+    // Nút cưỡng bức làm mới dữ liệu
     async function forceFullResync() {
       lastSyncTimestamp = 0;
       await idbSet('lastSyncTimestamp', 0);
-      alert("Đang kiểm tra và tải lại dữ liệu mới nhất...");
+      alert("Đang kiểm tra và tải lại dữ liệu công nhân mới nhất...");
       await syncAllRoomsInBackground(true);
     }
 
+    // HÀM ĐỒNG BỘ TOÀN BỘ DANH SÁCH CÔNG NHÂN TỪ FIREBASE VỀ ĐIỆN THOẠI
     async function syncAllRoomsInBackground(isForced = false) {
       if (!window.firestoreDb || isSyncingAllRooms || !navigator.onLine) return;
 
@@ -1239,13 +1241,15 @@
         const summaries = summarySnap.val() || {};
         const dirtyRoomIds = [];
 
+        // So sánh trực tiếp danh sách công nhân thực tế thay vì phụ thuộc timestamp
         Object.keys(summaries).forEach(roomId => {
           const s = summaries[roomId];
           const localRoom = db[roomId];
-          const localCount = localRoom?.workers ? localRoom.workers.length : (localRoom?._cachedCount || 0);
+          const actualWorkersCount = (localRoom && Array.isArray(localRoom.workers)) ? localRoom.workers.length : 0;
+          const serverCount = s.count || 0;
 
-          // Nạp lại nếu bị lệch quân số, chưa có công nhân, hoặc bị force sync
-          if (isForced || !localRoom || !localRoom.workers || localCount !== (s.count || 0) || (s.updatedAt || 0) > lastSyncTimestamp) {
+          // Nếu số lượng lệch hoặc phòng có người trên server nhưng máy chưa có workers chi tiết
+          if (isForced || serverCount !== actualWorkersCount || (actualWorkersCount === 0 && serverCount > 0)) {
             dirtyRoomIds.push(roomId);
           }
         });
@@ -1268,9 +1272,7 @@
           return;
         }
 
-        const CHUNK_SIZE = 12;
-        let maxServerTimeObserved = lastSyncTimestamp;
-
+        const CHUNK_SIZE = 15;
         for (let i = 0; i < dirtyRoomIds.length; i += CHUNK_SIZE) {
           const chunk = dirtyRoomIds.slice(i, i + CHUNK_SIZE);
           if (indicator) {
@@ -1289,16 +1291,13 @@
               remoteWorkers.forEach(normalizeWorker);
               db[rid].workers = remoteWorkers;
               delete db[rid]._cachedCount;
-
-              const serverRoomTime = summaries[rid]?.updatedAt || 0;
-              if (serverRoomTime > maxServerTimeObserved) maxServerTimeObserved = serverRoomTime;
             }
           });
 
-          await new Promise(resolve => setTimeout(resolve, 60));
+          await new Promise(resolve => setTimeout(resolve, 40));
         }
 
-        lastSyncTimestamp = maxServerTimeObserved > 0 ? maxServerTimeObserved : Date.now();
+        lastSyncTimestamp = Date.now();
         await Promise.all([
           idbSet('db', db),
           idbSet('retiredList', retiredList),
@@ -1306,12 +1305,9 @@
         ]);
 
         isRemoteRoomsFetched = true;
-        const currentSearchVal = document.getElementById('mainSearch')?.value.trim();
-        if (!currentSearchVal) renderRooms();
-        else handleSearch(currentSearchVal);
-
-        updateSyncIndicatorBadge();
+        renderRooms();
         updateDashboardStats();
+        updateSyncIndicatorBadge();
       } catch (err) {
         console.warn("Lỗi syncAllRoomsInBackground:", err);
       } finally {
@@ -1372,9 +1368,11 @@
         }
       });
 
-      // 2. Lắng nghe cập nhật tóm tắt phòng - ĐẢM BẢO ĐỒNG BỘ CHUẨN XÁC
+      // 2. Lắng nghe cập nhật tóm tắt phòng
       window.firestoreDb.ref('metadata/rooms_summary').on('value', (snapshot) => {
         const summaries = snapshot.val() || {};
+        let needsWorkerSync = false;
+
         Object.keys(db).forEach(roomId => {
           if (summaries[roomId]) {
             const s = summaries[roomId];
@@ -1383,9 +1381,10 @@
             db[roomId].isModified = !!s.isMod;
             db[roomId].customNote = s.customNote || "";
 
-            // Nếu số lượng cục bộ không khớp với server, xóa mảng workers cũ để nạp lại
-            if (db[roomId].workers && db[roomId].workers.length !== s.count) {
-              db[roomId].workers = [];
+            const localActual = db[roomId].workers ? db[roomId].workers.length : 0;
+            if (localActual !== s.count) {
+              needsWorkerSync = true;
+              if (localActual > s.count) db[roomId].workers = [];
             }
             db[roomId]._cachedCount = s.count || 0;
           } else {
@@ -1398,6 +1397,10 @@
         if (!currentSearchVal) renderRooms();
         updateDashboardStats();
         updateSyncIndicatorBadge();
+
+        if (needsWorkerSync && !isSyncingAllRooms) {
+          syncAllRoomsInBackground();
+        }
       });
 
       // 3. Lắng nghe Audit Logs
@@ -1542,7 +1545,7 @@
       return true;
     }
 
-    // ==================== CẬP NHẬT CHUẨN XÁC BẢNG ĐIỀU KHIỂN ====================
+    // ==================== BẢNG ĐIỀU KHIỂN & ĐẾM QUÂN SỐ ====================
     function updateDashboardStats() {
       const rooms = Object.values(db);
       let total = 0, male = 0, female = 0, enteredToday = 0, dirtyCount = 0;
@@ -1557,13 +1560,16 @@
         if (r.workers && r.workers.length > 0) {
           r.workers.forEach(w => {
             if (w.gender === 'Nữ') female++; else male++;
-            if (w.joinDate === today) enteredToday++;
+            if (w.joinDate === today || !w.joinDate) enteredToday++;
           });
-        } else {
-          // Khi chi tiết chưa nạp vào RAM, tạm lấy theo count
-          male += count;
         }
       });
+
+      // Nếu chưa nạp xong mảng workers chi tiết, dùng tổng quân số gán cho các trường
+      if (male === 0 && female === 0 && total > 0) {
+        male = total;
+        enteredToday = total;
+      }
 
       const usableRooms = rooms.filter(r => !r.isLocked);
       const availableRooms = usableRooms.filter(r => {
@@ -1582,7 +1588,7 @@
       const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
       setText('statOcc', `${Math.min(100, occupancy)}%`);
       setText('statTotal', `${total}/${rooms.length * CAPACITY}`);
-      setText('statToday', enteredToday > 0 ? enteredToday : total); // Luôn khớp tổng quân số nạp trong ngày
+      setText('statToday', enteredToday);
       setText('statRetiredToday', retiredToday);
       setText('statDirty', dirtyCount);
       
