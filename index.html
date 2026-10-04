@@ -2854,6 +2854,52 @@
         navigator.serviceWorker.register('./langvan-sw.js').catch(err => console.warn('PWA:', err));
       }
     });
+    // ==================== HỆ THỐNG ÂM THANH & BÁO CHUÔNG ====================
+let isAudioNotifyEnabled = false;
+let audioCtx = null;
+
+function toggleAudioNotify() {
+  isAudioNotifyEnabled = !isAudioNotifyEnabled;
+  const btn = document.getElementById('btnAudioNotify');
+  
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+
+  if (btn) {
+    if (isAudioNotifyEnabled) {
+      btn.innerHTML = '🔔 Đang Bật Chuông';
+      btn.style.background = '#16a34a';
+      playNotifyBeep(880, 0.15);
+    } else {
+      btn.innerHTML = '🔔 Bật Nhận Chuông';
+      btn.style.background = '#0284c7';
+    }
+  }
+}
+
+function playNotifyBeep(freq = 660, duration = 0.2) {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+  } catch (e) {
+    console.warn("Lỗi phát âm thanh:", e);
+  }
+}
   </script>
 </body>
 </html>
