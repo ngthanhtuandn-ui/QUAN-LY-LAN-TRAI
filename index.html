@@ -1420,7 +1420,9 @@
     function renderRooms(matchedIds = null) {
       const grid = document.getElementById('roomGrid');
       if (!grid) return;
-
+if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
+    playNotifyBeep(880, 0.2);
+  }
       const khu = document.getElementById('selKhu')?.value || 'ALL';
       const status = document.getElementById('selRoomStatusFilter')?.value || 'ALL';
       const matchedSet = matchedIds ? new Set(matchedIds) : null;
