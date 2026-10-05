@@ -2587,46 +2587,48 @@ const retiredToday = (retiredList || []).filter(w => {
       }
     }
 
-    async function adminClearAll() {
-      if (!confirm("CẢNH BÁO: Bạn có chắc chắn muốn xóa sạch toàn bộ dữ liệu?")) return;
-      if (!confirm("Thao tác này KHÔNG THỂ HOÀN TÁC. Tiếp tục?")) return;
+async function adminClearAll() {
+  if (!confirm("CẢNH BÁO: Bạn có chắc chắn muốn xóa sạch toàn bộ dữ liệu?")) return;
+  if (!confirm("Thao tác này KHÔNG THỂ HOÀN TÁC. Tiếp tục?")) return;
 
-      const resetTimestamp = Date.now();
-      db = {}; logs = []; retiredList = []; syncQueue = []; lastSyncTimestamp = resetTimestamp;
-      
-      normalizeDatabase();
-      persistLocalState();
-      persistSyncQueue();
-      await idbSet('localLastResetTime', resetTimestamp);
+  const resetTimestamp = Date.now();
+  db = {}; 
+  logs = []; 
+  retiredList = []; 
+  syncQueue = []; 
+  lastSyncTimestamp = resetTimestamp;
 
-      try {
-      const dbRef = (typeof window.firestoreDb !== 'undefined' && window.firestoreDb) 
-                    ? window.firestoreDb.ref() 
-                    : (typeof firebase !== 'undefined' && firebase.database ? firebase.database().ref() : null);
+  normalizedDatabase();
+  persistLocalState();
+  persistSyncQueue();
+  await idbSet('localLastResetTime', resetTimestamp);
 
-      if (dbRef) {
-        await dbRef.set({
-          metadata: {
-            rooms_summary: {},
-            lastResetTime: (typeof firebase !== 'undefined' && firebase.database) ? firebase.database.ServerValue.TIMESTAMP : Date.now()
-          },
-          rooms: {},
-          logs: {},
-          retired: {},
-          workers: {},
-          system_members: (typeof approvedDevices !== 'undefined') ? approvedDevices : {}
-        });
-      }
-      if (typeof localStorage !== 'undefined') localStorage.clear();
-      if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
+  // Xóa sạch cả phòng, người nghỉ, và toàn bộ lịch sử biến động trên Firebase
+  if (navigator.onLine && typeof firebase !== 'undefined' && firebase.database) {
+    try {
+      const dbRef = firebase.database();
+      await Promise.all([
+        dbRef.ref('rooms').set({}),
+        dbRef.ref('retired').set({}),
+        dbRef.ref('logs').set({}),
+        dbRef.ref('auditLogs').set({}),
+        dbRef.ref('metadata/rooms_summary').set({})
+      ]);
+      await dbRef.ref('metadata/lastResetTime').set(firebase.database.ServerValue.TIMESTAMP);
     } catch (err) {
-      console.error("Lỗi khi xóa trắng dữ liệu:", err);
+      console.error("Lỗi khi xóa trắng dữ liệu máy chủ:", err);
     }
-      renderRooms();
-      populateTargetRoomSelects();
-      closeModal('adminModal');
-      alert("Đã làm sạch toàn bộ dữ liệu hệ thống.");
-    }
+  }
+
+  if (typeof localStorage !== 'undefined') localStorage.clear();
+  if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
+
+  renderRooms();
+  populateTargetRoomSelects();
+  closeModal('adminModal');
+  alert("Đã làm sạch toàn bộ dữ liệu và biến động phòng!");
+  location.reload();
+}
 
     function populateRowSelects() {
       const sel1 = document.getElementById('importRowSelect');
