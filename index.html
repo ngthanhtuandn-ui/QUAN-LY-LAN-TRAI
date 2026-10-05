@@ -1587,7 +1587,17 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
       }).length;
 
       const modifiedRooms = rooms.filter(r => r.isModified).length;
-      const retiredToday = retiredList.filter(w => w.retireDate === today).length;
+      const _now = new Date();
+    const _d = _now.getDate();
+    const _m = _now.getMonth() + 1;
+    const _y = _now.getFullYear();
+    const _today1 = `${_d}/${_m}/${_y}`;
+    const _today2 = `${String(_d).padStart(2, '0')}/${String(_m).padStart(2, '0')}/${_y}`;
+
+    const retiredToday = (retiredList || []).filter(w => {
+      const dStr = String(w.retireDate || '').trim().split(' ')[0];
+      return dStr === _today1 || dStr === _today2 || dStr === today;
+    }).length;
       const occupancy = rooms.length ? Math.round((total / (rooms.length * CAPACITY)) * 100) : 0;
 
       const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -2654,6 +2664,22 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
       ws['!cols'] = headers.map(h => ({wch: Math.max(12, h.length + 3)}));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'CongNhan');
+      // Thêm Sheet Danh sách công nhân đã nghỉ việc
+    if (typeof retiredList !== 'undefined' && Array.isArray(retiredList) && retiredList.length > 0) {
+      const retiredRows = retiredList.map((w, idx) => ({
+        'STT': idx + 1,
+        'Mã NV': w.empId || w.id || '',
+        'Họ và Tên': w.name || w.fullName || '',
+        'CCCD': w.idCard || w.cccd || '',
+        'Giới Tính': w.gender || '',
+        'Phòng Cũ': w.oldRoom || w.room || '',
+        'Ngày Vào': w.joinDate || w.checkInDate || '',
+        'Ngày Nghỉ Việc': w.retireDate || '',
+        'Lý Do': w.reason || w.note || ''
+      }));
+      const retiredWs = XLSX.utils.json_to_sheet(retiredRows);
+      XLSX.utils.book_append_sheet(wb, retiredWs, 'DanhSachNghiViec');
+    }
       XLSX.writeFile(wb, `LangVan_DanhSach_${new Date().toISOString().slice(0,10)}.xlsx`);
     }
 
