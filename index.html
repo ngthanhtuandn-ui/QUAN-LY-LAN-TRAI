@@ -1599,19 +1599,32 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
     const _todayDMY_1 = `${_d}/${_m}/${_y}`;        // ví dụ: 5/10/2026
     const _todayDMY_2 = `${_d2}/${_m2}/${_y}`;      // ví dụ: 05/10/2026
     const _todayYMD = `${_y}-${_m2}-${_d2}`;        // ví dụ: 2026-10-05
+const retiredToday = (retiredList || []).filter(w => {
+      const rawVal = w.retireDate || w.ngayNghi || w.retiredDate || w.date || w.time || 
+                     w.ngayRa || w.checkOutDate || w.ngay || w.timestamp || w.createdAt || w.updatedAt;
+      
+      if (!rawVal) return false;
 
-    const retiredToday = (retiredList || []).filter(w => {
-      // Lấy chuỗi ngày, cắt bỏ phần giờ phía sau nếu có (ví dụ "2026-10-05 08:30:00" -> "2026-10-05")
-      const raw = String(w.retireDate || w.ngayNghi || w.retiredDate || '').trim();
-      if (!raw) return false;
-      const dStr = raw.split(' ')[0].split('T')[0];
+      if (typeof rawVal === 'number' || (!isNaN(rawVal) && String(rawVal).length >= 10 && !String(rawVal).includes('-') && !String(rawVal).includes('/'))) {
+        const itemDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(Number(rawVal)));
+        return itemDateStr === _todayYMD;
+      }
 
-      return dStr === _todayDMY_1 || 
-             dStr === _todayDMY_2 || 
-             dStr === _todayYMD ||
-             dStr.replace(/-/g, '/') === _todayDMY_2;
+      const cleanStr = String(rawVal).trim().split(' ')[0].split('T')[0];
+
+      if (cleanStr.includes('/')) {
+        const parts = cleanStr.split('/');
+        if (parts.length === 3) {
+          const d = parts[0].padStart(2, '0');
+          const m = parts[1].padStart(2, '0');
+          const y = parts[2];
+          return `${y}-${m}-${d}` === _todayYMD || cleanStr === _todayDMY_1 || cleanStr === _todayDMY_2;
+        }
+      }
+
+      return cleanStr === _todayYMD || cleanStr === _todayDMY_2 || cleanStr.replace(/-/g, '/') === _todayDMY_2;
     }).length;
-      const occupancy = rooms.length ? Math.round((total / (rooms.length * CAPACITY)) * 100) : 0;
+        const occupancy = rooms.length ? Math.round((total / (rooms.length * CAPACITY)) * 100) : 0;
 
       const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
       setText('statOcc', `${Math.min(100, occupancy)}%`);
