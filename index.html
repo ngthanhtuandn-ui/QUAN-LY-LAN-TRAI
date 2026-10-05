@@ -2599,18 +2599,29 @@ const retiredToday = (retiredList || []).filter(w => {
       persistSyncQueue();
       await idbSet('localLastResetTime', resetTimestamp);
 
-      if (window.firestoreDb && navigator.onLine) {
-        await window.firestoreDb.ref().set({
-          metadata: { 
+      try {
+      const dbRef = (typeof window.firestoreDb !== 'undefined' && window.firestoreDb) 
+                    ? window.firestoreDb.ref() 
+                    : (typeof firebase !== 'undefined' && firebase.database ? firebase.database().ref() : null);
+
+      if (dbRef) {
+        await dbRef.set({
+          metadata: {
             rooms_summary: {},
-            lastResetTime: firebase.database.ServerValue.TIMESTAMP
+            lastResetTime: (typeof firebase !== 'undefined' && firebase.database) ? firebase.database.ServerValue.TIMESTAMP : Date.now()
           },
           rooms: {},
           logs: {},
           retired: {},
-          system_members: approvedDevices
+          workers: {},
+          system_members: (typeof approvedDevices !== 'undefined') ? approvedDevices : {}
         });
       }
+      if (typeof localStorage !== 'undefined') localStorage.clear();
+      if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
+    } catch (err) {
+      console.error("Lỗi khi xóa trắng dữ liệu:", err);
+    }
       renderRooms();
       populateTargetRoomSelects();
       closeModal('adminModal');
