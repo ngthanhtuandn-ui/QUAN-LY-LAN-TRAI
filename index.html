@@ -124,7 +124,7 @@ function mergeWorkerLists(localWorkers = [], remoteWorkers = []) {
         renderRooms();        if (curRoomId && roomsToProcess.includes(curRoomId)) {          renderWorkersInRoom();        }      } catch (err) {        console.warn("Lỗi flushSyncQueue:", err);      } finally {        isFlushingQueue = false;        updateSyncIndicatorBadge();      }    }
     // ==================== 4. PHÂN QUYỀN VÀ ĐỊNH DANH ====================    function initDeviceIdentity(uid) {      currentDeviceId = uid;      let dName = localStorage.getItem('LV_DEVICE_NAME');      if (!dName) {        dName = "Cán bộ (" + currentDeviceId.substring(0, 6).toUpperCase() + ")";        localStorage.setItem('LV_DEVICE_NAME', dName);      }      currentDeviceName = dName;
       const idEl = document.getElementById('lblDeviceId');      const nameEl = document.getElementById('lblDeviceName');      if (idEl) idEl.innerText = currentDeviceId.substring(0, 8) + '...';      if (nameEl) nameEl.innerText = currentDeviceName;            updateUIPermissions();    
-    function renameCurrentDevice() {      const newName = prompt("Nhập Họ & Tên cán bộ (và khu vực phụ trách):", currentDeviceName);      if (newName && newName.trim()) {        currentDeviceName = newName.trim();        localStorage.setItem('LV_DEVICE_NAME', currentDeviceName);        document.getElementById('lblDeviceName').innerText = currentDeviceName;
+    function renameCurrentDevice()} {      const newName = prompt("Nhập Họ & Tên cán bộ (và khu vực phụ trách):", currentDeviceName);      if (newName && newName.trim()) {        currentDeviceName = newName.trim();        localStorage.setItem('LV_DEVICE_NAME', currentDeviceName);        document.getElementById('lblDeviceName').innerText = currentDeviceName;
         if (window.firestoreDb && currentDeviceId) {          window.firestoreDb.ref('system_members/' + currentDeviceId).update({            name: currentDeviceName,            updatedAt: new Date().toISOString()          });        }      }    }
     function syncDeviceAuthWithFirebase() {
       if (!window.firestoreDb || !currentDeviceId) return;
@@ -372,7 +372,7 @@ if (statDiffEl) {
       if (Array.isArray(retiredList)) {
         retiredList.unshift(retireItem);
       }
-      if (window.firestoreDB && navigator.onLine) {
+      if (window.firestoreDb && navigator.onLine) {
         window.firestoreDB.ref('retired').push(retireItem);
       }
       room.isModified = true;
