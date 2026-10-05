@@ -172,7 +172,15 @@ function mergeWorkerLists(localWorkers = [], remoteWorkers = []) {
     if (!isAuthorized) el.setAttribute('disabled', 'true');
     else el.removeAttribute('disabled');
   });
-} {      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') {        alert("THIẾT BỊ CHƯA ĐƯỢC DUYỆT!\nBạn chỉ có quyền xem. Vui lòng liên hệ Quản trị viên cấp quyền nạp Excel.");        return;      }      openImportModal();    }
+}
+
+    function handleImportAuthClick() {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') {
+        alert("THIẾT BỊ CHƯA ĐƯỢC DUYỆT!\nBạn chỉ có quyền xem. Vui lòng liên hệ Quản trị viên cấp quyền nạp Excel.");
+        return;
+      }
+      openImportModal();
+    }
     function openAdminPanelClick() {      if (currentUserRole !== 'admin') {        alert("CHỨC NĂNG DÀNH CHO QUẢN TRỊ VIÊN!\nTài khoản thiết bị này chưa được cấp vai trò Admin trên hệ thống.");        return;      }      checkAbsenceAlerts();      adminViewLogs();      openModal('adminModal');    }
     function maskCccdNumber(cccd) {      if (!cccd) return '-';      if (currentUserRole === 'staff' || currentUserRole === 'admin') return cccd;      const str = String(cccd).trim();      return str.length >= 9 ? str.slice(0, 3) + '******' + str.slice(-3) : '******';    }
     function openDeviceAuthModal() {      renderDeviceAuthList();      openModal('deviceAuthModal');    }
