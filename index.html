@@ -309,17 +309,41 @@ if (statDiffEl) {
     function updateDamageTagButtons() {      const room = db[curRoomId];      if (!room) return;      const tags = room.damageReport || [];      const tagMap = {        'Ban': 'Phòng bẩn / Chưa dọn',        'Quat': 'Hỏng Quạt',        'Dien': 'Hỏng Điện',        'DieuHoa': 'Hỏng Điều Hòa',        'OCam': 'Hỏng Ổ Cắm'      };      Object.keys(tagMap).forEach(key => {        const fullTag = tagMap[key];        const el = document.getElementById('tag_' + key);        if (el) {          if (key === 'Ban') {            el.className = tags.includes(fullTag) ? 'tag-btn tag-btn-warning active' : 'tag-btn tag-btn-warning';          } else {            el.className = tags.includes(fullTag) ? 'tag-btn active' : 'tag-btn';          }        }      });    }
     function toggleLockRoom() {      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return alert("Bạn không có quyền thao tác!");      const room = db[curRoomId];      if (!room) return;      if (room.workers.length > 0 && !room.isLocked) return alert("Chỉ có thể khóa khi phòng trống!");      room.isLocked = !room.isLocked;      room.updatedAt = Date.now();
       syncSingleRoom(curRoomId);      openRoomModal(curRoomId);      renderRooms();    }
-    function confirmRetireWorker(idx) {      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return alert("Bạn không có quyền cho nghỉ việc!");      const worker = db[curRoomId].workers[idx];      if (!confirm(`XÁC NHẬN NGHỈ VIỆC: ${worker.name}?`)) return;      const removed = db[curRoomId].workers.splice(idx, 1)[0];      const retireDateStr = getTodayVN();const retireItem = {
-            ...removed,
-            empId: removed.empId || "-",
-            name: removed.name,
-            idCard: removed.idCard,
-            room: curRoomId,
-            joinDate: removed.joinDate || removed.entryDate || retireDateStr,
-            retireDate: retireDateStr
-        };
-        retiredList.unshift(retireItem);                  if (window.firestoreDb && navigator.onLine) {        window.firestoreDb.ref('retired').push(retireItem);      }      db[curRoomId].isModified = true;      db[curRoomId].updatedAt = Date.now();
-      recordLog("Nghỉ việc", `Báo giảm: ${removed.name}`);      syncSingleRoom(curRoomId);      renderWorkersInRoom();      renderRooms();    }
+    function confirmRetireWorker(idx) {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return alert("Bạn không có quyền cho nghỉ việc!");
+      const room = db[curRoomId];
+      if (!room || !room.workers || !room.workers[idx]) return;
+      const worker = room.workers[idx];
+      if (!confirm(`XÁC NHẬN NGHỈ VIỆC: ${worker.name}?`)) return;
+      
+      const removed = room.workers.splice(idx, 1)[0];
+      const retireDateStr = typeof getTodayVN === 'function' ? getTodayVN() : today;
+      const retireItem = {
+        empId: (removed && removed.empId) ? removed.empId : "-",
+        name: (removed && removed.name) ? removed.name : "",
+        idCard: (removed && removed.idCard) ? removed.idCard : "",
+        gender: (removed && removed.gender) ? removed.gender : "",
+        room: curRoomId,
+        joinDate: (removed && (removed.joinDate || removed.entryDate)) ? (removed.joinDate || removed.entryDate) : retireDateStr,
+        retireDate: retireDateStr
+      };
+      
+      if (Array.isArray(retiredList)) {
+        retiredList.unshift(retireItem);
+      }
+      if (window.firestoreDB && navigator.onLine) {
+        window.firestoreDB.ref('retired').push(retireItem);
+      }
+      room.isModified = true;
+      room.updatedAt = Date.now();
+      if (typeof recordLog === 'function') {
+        recordLog("Nghỉ việc", `Báo giảm: ${removed ? removed.name : ''}`);
+      }
+      if (typeof syncSingleRoom === 'function') syncSingleRoom(curRoomId);
+      if (typeof renderWorkersInRoom === 'function') renderWorkersInRoom();
+      if (typeof renderRooms === 'function') renderRooms();
+      if (typeof updateDashboardStats === 'function') updateDashboardStats();
+    }
     function editWorkerName(idx) {      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return;      const room = db[curRoomId], worker = room?.workers?.[idx];      if (!worker) return;      document.getElementById('editWorkerIdx').value = idx;      document.getElementById('eEmpId').value = worker.empId || '';      document.getElementById('eName').value = worker.name || '';      document.getElementById('eGender').value = worker.gender === 'Nữ' ? 'Nữ' : 'Nam';      document.getElementById('eIdCard').value = worker.idCard || '';      document.getElementById('eDob').value = worker.dob || '';      document.getElementById('ePhone').value = worker.phone || '';      document.getElementById('eAddress').value = worker.address || '';      document.getElementById('eNote').value = worker.note || '';      document.getElementById('eJoinDate').value = worker.joinDate || '';      document.getElementById('eLeaveDate').value = worker.leaveDate || '';      openModal('editWorkerModal');      setTimeout(() => document.getElementById('eName').focus(), 50);    }
     function saveWorkerAllEdit() {      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return alert("Bạn không có quyền sửa!");      const room = db[curRoomId];      const idx = Number(document.getElementById('editWorkerIdx').value);      const worker = room?.workers?.[idx];      if (!worker) return;      const name = document.getElementById('eName').value.trim();      const idCard = normalizeIdCard(document.getElementById('eIdCard').value);      if (!name || !idCard) return alert('Họ tên và CCCD không được để trống.');      const duplicateRoom = isIdCardDuplicate(idCard);      if (duplicateRoom && !(normalizeIdCard(worker.idCard) === idCard)) return alert(`CCCD đã tồn tại tại ${duplicateRoom}.`);
       worker.empId = document.getElementById('eEmpId').value.trim();      worker.name = name;      worker.gender = document.getElementById('eGender').value === 'Nữ' ? 'Nữ' : 'Nam';      worker.idCard = idCard;      worker.dob = document.getElementById('eDob').value.trim();      worker.phone = document.getElementById('ePhone').value.trim();      worker.address = document.getElementById('eAddress').value.trim();      worker.note = document.getElementById('eNote').value.trim();      worker.joinDate = document.getElementById('eJoinDate').value.trim();      worker.leaveDate = document.getElementById('eLeaveDate').value || '';      worker.updatedAt = Date.now();
