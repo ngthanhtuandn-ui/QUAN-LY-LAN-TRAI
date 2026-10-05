@@ -1590,13 +1590,26 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
       const _now = new Date();
     const _d = _now.getDate();
     const _m = _now.getMonth() + 1;
-    const _y = _now.getFullYear();
-    const _today1 = `${_d}/${_m}/${_y}`;
-    const _today2 = `${String(_d).padStart(2, '0')}/${String(_m).padStart(2, '0')}/${_y}`;
+    
+      const _y = _now.getFullYear();
+    const _d2 = String(_d).padStart(2, '0');
+    const _m2 = String(_m).padStart(2, '0');
+
+    // Hỗ trợ tất cả các dạng định dạng ngày có thể có của ngày hôm nay
+    const _todayDMY_1 = `${_d}/${_m}/${_y}`;        // ví dụ: 5/10/2026
+    const _todayDMY_2 = `${_d2}/${_m2}/${_y}`;      // ví dụ: 05/10/2026
+    const _todayYMD = `${_y}-${_m2}-${_d2}`;        // ví dụ: 2026-10-05
 
     const retiredToday = (retiredList || []).filter(w => {
-      const dStr = String(w.retireDate || '').trim().split(' ')[0];
-      return dStr === _today1 || dStr === _today2 || dStr === today;
+      // Lấy chuỗi ngày, cắt bỏ phần giờ phía sau nếu có (ví dụ "2026-10-05 08:30:00" -> "2026-10-05")
+      const raw = String(w.retireDate || w.ngayNghi || w.retiredDate || '').trim();
+      if (!raw) return false;
+      const dStr = raw.split(' ')[0].split('T')[0];
+
+      return dStr === _todayDMY_1 || 
+             dStr === _todayDMY_2 || 
+             dStr === _todayYMD ||
+             dStr.replace(/-/g, '/') === _todayDMY_2;
     }).length;
       const occupancy = rooms.length ? Math.round((total / (rooms.length * CAPACITY)) * 100) : 0;
 
