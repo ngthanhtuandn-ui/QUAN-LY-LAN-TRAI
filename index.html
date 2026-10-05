@@ -151,7 +151,7 @@ function mergeWorkerLists(localWorkers = [], remoteWorkers = []) {
         renderDeviceAuthList();
       });
     }    
-    function updateUIPermissions()       const isAuthorized = (currentUserRole === 'staff' || currentUserRole === 'admin');      const isAdmin = (currentUserRole === 'admin');            const roleText = isAdmin ? '🛡️ Quản Trị Viên' : isAuthorized ? '🟢 Cán Bộ (Đã Duyệt)' : '👁 Khách (Chỉ Xem)';      const roleEl = document.getElementById('lblUserRole');      if (roleEl) {        roleEl.innerText = roleText;        roleEl.style.color = isAuthorized ? '#16a34a' : '#d97706';      }
+    function updateUIPermissions(){       const isAuthorized = (currentUserRole === 'staff' || currentUserRole === 'admin');      const isAdmin = (currentUserRole === 'admin');            const roleText = isAdmin ? '🛡️ Quản Trị Viên' : isAuthorized ? '🟢 Cán Bộ (Đã Duyệt)' : '👁 Khách (Chỉ Xem)';      const roleEl = document.getElementById('lblUserRole');      if (roleEl) {        roleEl.innerText = roleText;        roleEl.style.color = isAuthorized ? '#16a34a' : '#d97706';      }
       const helpEl = document.getElementById('lblRoleHelp');      if (helpEl) {        helpEl.innerText = isAuthorized ? "(Toàn quyền vận hành)" : "(Chỉ xem - Liên hệ Admin duyệt)";      }
       const topAdminBtn = document.getElementById('btnTopAdmin');      if (topAdminBtn) {        topAdminBtn.style.display = isAdmin ? 'inline-flex' : 'none';      }
       document.querySelectorAll('.edit-required').forEach(el => {        if (!isAuthorized) el.setAttribute('disabled', 'true');        else el.removeAttribute('disabled');      });    }
