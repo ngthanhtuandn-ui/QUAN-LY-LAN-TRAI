@@ -235,9 +235,9 @@
       <span id="syncIndicator" style="font-size: 0.7rem; color: #16a34a; font-weight: normal; margin-left: 8px; cursor: pointer;" onclick="forceFullResync()" title="Bấm vào đây để ép buộc đồng bộ dữ liệu mới nhất">🟢 Đang khởi tạo...</span>
     </div>
     <div>
-        <button id="btnAudioNotify" onclick="toggleAudioNotify()" style="background:#0284c7;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:bold;cursor:pointer;margin-right:8px;">🔔 Bật Nhận Chuông</button>
-        <button id="btnTopAdmin" onclick="openAdminPanelClick()" class="btn" style="background:#334155; color:white; font-size:0.7rem; display:none;">🛡️ Quản Trị</button>
-      </div>
+      <button id="btnAudioNotify" onclick="toggleAudioNotify()" style="background:#0284c7;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:bold;cursor:pointer;margin-right:8px;">🔔 Bật Nhận Chuông</button>
+      <button id="btnTopAdmin" onclick="openAdminPanelClick()" class="btn" style="background:#334155; color:white; font-size:0.7rem; display:none;">🛡️ Quản Trị</button>
+    </div>
   </header>
 
   <!-- THANH BÁO QUYỀN VÀ TÊN CÁN BỘ -->
@@ -252,13 +252,30 @@
     </div>
   </div>
 
-  <!-- THANH THỐNG KÊ -->
+  <!-- THANH THỐNG KÊ (ĐÃ BỔ SUNG THẺ TĂNG TRƯỞNG & BIẾN ĐỘNG TRONG NGÀY) -->
   <div class="dashboard-container no-print">
     <div class="compact-dashboard">
       <div class="kpi-chip"><div class="lbl">Hiệu Suất</div><div class="val" id="statOcc">0%</div></div>
       <div class="kpi-chip"><div class="lbl">Tổng Quân Số</div><div class="val" id="statTotal">0/7000</div></div>
-      <div class="kpi-chip"><div class="lbl">Vào Hôm Nay</div><div class="val" id="statToday" style="color:var(--green);">0</div></div>
-      <div class="kpi-chip"><div class="lbl">Nghỉ Trong Ngày</div><div class="val" id="statRetiredToday" style="color:var(--red);">0</div></div>
+      
+      <!-- Vào hôm nay -->
+      <div class="kpi-chip" style="border: 1px solid #86efac; background: #f0fdf4;">
+        <div class="lbl" style="color: #166534; font-weight: bold;">📈 Vào Hôm Nay</div>
+        <div class="val" id="statToday" style="color:var(--green); font-weight:900;">0</div>
+      </div>
+
+      <!-- Nghỉ trong ngày -->
+      <div class="kpi-chip" style="border: 1px solid #fca5a5; background: #fef2f2;">
+        <div class="lbl" style="color: #991b1b; font-weight: bold;">📉 Nghỉ Trong Ngày</div>
+        <div class="val" id="statRetiredToday" style="color:var(--red); font-weight:900;">0</div>
+      </div>
+
+      <!-- Biến động ròng trong ngày -->
+      <div class="kpi-chip" style="border: 1.5px solid #0284c7; background: #f0f9ff; min-width: 85px;">
+        <div class="lbl" style="color:#0369a1; font-weight:800;">⚡ Biến Động Hôm Nay</div>
+        <div class="val" id="statDiffToday" style="font-weight:900; font-size:0.85rem;">0</div>
+      </div>
+
       <div class="kpi-chip"><div class="lbl">Nam / Nữ</div><div class="val" id="statGender">0/<span style="color:var(--red); font-weight:bold;">0</span></div></div>
       <div class="kpi-chip"><div class="lbl">Trống / Đầy (Đỏ)</div><div class="val" id="statRoomStatus">350/<span style="color:var(--red); font-weight:bold;">0</span></div></div>
       <div class="kpi-chip"><div class="lbl">🧹 Cần Dọn Dẹp</div><div class="val" id="statDirty" style="color:var(--warning-amber); font-weight:bold;">0</div></div>
@@ -1192,7 +1209,6 @@
       const remote = Array.isArray(remoteWorkers) ? remoteWorkers : [];
       const known = knownKeys instanceof Set ? knownKeys : null;
 
-      // Lần đầu chưa có dấu vết lịch sử: hòa giải theo updatedAt, không tự ý xóa dữ liệu.
       if (!known) return mergeWorkerLists(local, remote);
 
       const localMap = new Map(local.map(w => [workerKey(w), w]).filter(([k]) => k));
@@ -1200,13 +1216,11 @@
       const deletedKeys = new Set([...known].filter(k => !localMap.has(k)));
       const result = new Map();
 
-      // Giữ dữ liệu server, trừ những người đã bị xóa/nghỉ ở máy này.
       remote.forEach(w => {
         const k = workerKey(w);
         if (k && !deletedKeys.has(k)) result.set(k, JSON.parse(JSON.stringify(w)));
       });
 
-      // Dữ liệu cục bộ mới hoặc chỉnh sửa mới hơn được ưu tiên.
       local.forEach(w => {
         const k = workerKey(w);
         if (!k) return;
@@ -1274,7 +1288,6 @@
       }
     }
 
-    // Nút cưỡng bức làm mới dữ liệu
     async function forceFullResync() {
       lastSyncTimestamp = 0;
       await idbSet('lastSyncTimestamp', 0);
@@ -1282,7 +1295,6 @@
       await syncAllRoomsInBackground(true);
     }
 
-    // HÀM ĐỒNG BỘ TOÀN BỘ DANH SÁCH CÔNG NHÂN TỪ FIREBASE VỀ ĐIỆN THOẠI
     async function syncAllRoomsInBackground(isForced = false) {
       if (!window.firestoreDb || isSyncingAllRooms || !navigator.onLine) return;
 
@@ -1298,14 +1310,12 @@
         const summaries = summarySnap.val() || {};
         const dirtyRoomIds = [];
 
-        // So sánh trực tiếp danh sách công nhân thực tế thay vì phụ thuộc timestamp
         Object.keys(summaries).forEach(roomId => {
           const s = summaries[roomId];
           const localRoom = db[roomId];
           const actualWorkersCount = (localRoom && Array.isArray(localRoom.workers)) ? localRoom.workers.length : 0;
           const serverCount = s.count || 0;
 
-          // Nếu số lượng lệch hoặc phòng có người trên server nhưng máy chưa có workers chi tiết
           if (isForced || serverCount !== actualWorkersCount || (actualWorkersCount === 0 && serverCount > 0)) {
             dirtyRoomIds.push(roomId);
           }
@@ -1328,9 +1338,11 @@
           updateDashboardStats();
           return;
         }
-if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
-    playNotifyBeep(920, 0.35);
-  }
+
+        if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
+          playNotifyBeep(920, 0.35);
+        }
+
         const CHUNK_SIZE = 15;
         for (let i = 0; i < dirtyRoomIds.length; i += CHUNK_SIZE) {
           const chunk = dirtyRoomIds.slice(i, i + CHUNK_SIZE);
@@ -1348,7 +1360,6 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
             if (db[rid]) {
               const remoteWorkers = Array.isArray(remoteData.workers) ? remoteData.workers : [];
               remoteWorkers.forEach(normalizeWorker);
-              // Không ghi đè thay đổi cục bộ đang chờ gửi; hòa giải theo updatedAt/CCCD.
               const known = Array.isArray(db[rid]._knownWorkerKeys) ? new Set(db[rid]._knownWorkerKeys) : null;
               db[rid].workers = mergeRoomForSync(db[rid].workers || [], remoteWorkers, known);
               db[rid]._knownWorkerKeys = db[rid].workers.map(workerKey).filter(Boolean);
@@ -1396,7 +1407,6 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
     function initGranularFirebase() {
       if (!window.firestoreDb) return;
 
-      // 1. Lắng nghe tín hiệu Reset toàn hệ thống từ Admin
       window.firestoreDb.ref('metadata/lastResetTime').on('value', async (snap) => {
         const resetTime = snap.val() || 0;
         const localLastReset = (await idbGet('localLastResetTime')) || 0;
@@ -1430,7 +1440,6 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
         }
       });
 
-      // 2. Lắng nghe cập nhật tóm tắt phòng
       window.firestoreDb.ref('metadata/rooms_summary').on('value', (snapshot) => {
         const summaries = snapshot.val() || {};
         let needsWorkerSync = false;
@@ -1445,8 +1454,6 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
 
             const localActual = db[roomId].workers ? db[roomId].workers.length : 0;
             if (localActual !== s.count) {
-              // Không xóa dữ liệu cục bộ chỉ vì summary trên server đang cũ;
-              // để syncAllRoomsInBackground hòa giải thay đổi an toàn.
               needsWorkerSync = true;
             }
             db[roomId]._cachedCount = s.count || 0;
@@ -1466,7 +1473,6 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
         }
       });
 
-      // 3. Lắng nghe Audit Logs
       window.firestoreDb.ref('logs').limitToLast(50).on('child_added', (snapshot) => {
         const item = snapshot.val();
         if (item && !logs.some(l => l.time === item.time && l.action === item.action && l.detail === item.detail)) {
@@ -1482,9 +1488,9 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
     function renderRooms(matchedIds = null) {
       const grid = document.getElementById('roomGrid');
       if (!grid) return;
-if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
-    playNotifyBeep(880, 0.2);
-  }
+      if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
+        playNotifyBeep(880, 0.2);
+      }
       const khu = document.getElementById('selKhu')?.value || 'ALL';
       const status = document.getElementById('selRoomStatusFilter')?.value || 'ALL';
       const matchedSet = matchedIds ? new Set(matchedIds) : null;
@@ -1615,7 +1621,6 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
       const rooms = Object.values(db);
       let total = 0, male = 0, female = 0, enteredToday = 0, dirtyCount = 0;
 
-      // Chuẩn hóa ngày về YYYY-MM-DD để không phụ thuộc định dạng lưu trong dữ liệu.
       const today = getLocalDateISO();
       const isToday = (value) => {
         if (value === null || value === undefined || value === '') return false;
@@ -1630,13 +1635,11 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
         if (!raw) return false;
         const datePart = raw.split(/[ T]/)[0];
 
-        // YYYY-MM-DD
         if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(datePart)) {
           const [y, m, d] = datePart.split('-');
           return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}` === today;
         }
 
-        // DD/MM/YYYY, D/M/YYYY, DD-MM-YYYY, DD.MM.YYYY
         const m = datePart.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
         if (m) {
           return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}` === today;
@@ -1652,8 +1655,6 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
         const count = hasWorkers ? r.workers.length : (r._cachedCount || 0);
         total += count;
 
-        // Chỉ đếm "Vào hôm nay" khi hồ sơ thực sự có ngày vào hôm nay.
-        // Không được coi hồ sơ thiếu ngày vào là vào hôm nay.
         if (hasWorkers) {
           r.workers.forEach(w => {
             if (w.gender === 'Nữ') female++; else male++;
@@ -1661,9 +1662,6 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
           });
         }
       });
-
-      // Nếu dữ liệu đang lazy-load chỉ có _cachedCount thì không tự ý coi toàn bộ quân số là vào hôm nay.
-      // Khi đó statToday chỉ phản ánh những hồ sơ có ngày vào xác định.
 
       const usableRooms = rooms.filter(r => !r.isLocked);
       const availableRooms = usableRooms.filter(r => {
@@ -1677,13 +1675,10 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
 
       const modifiedRooms = rooms.filter(r => r.isModified).length;
 
-      // Đếm người nghỉ hôm nay từ lịch sử nghỉ việc.
       const retiredToday = (Array.isArray(retiredList) ? retiredList : []).filter(w =>
         isToday(w.retireDate || w.leaveDate || w.ngayNghi || w.retiredDate || w.date || w.ngayRa || w.checkOutDate)
       ).length;
 
-      // Trường hợp một người vào và nghỉ ngay trong ngày: người đó không còn nằm trong room.workers,
-      // nên phải lấy thêm từ retiredList để "Vào hôm nay" không bị thiếu.
       const enteredAndRetiredToday = (Array.isArray(retiredList) ? retiredList : []).filter(w =>
         isToday(w.joinDate || w.entryDate) &&
         isToday(w.retireDate || w.leaveDate || w.ngayNghi || w.retiredDate || w.date || w.ngayRa || w.checkOutDate)
@@ -1700,16 +1695,24 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
 
       setText('statOcc', `${Math.min(100, occupancy)}%`);
       setText('statTotal', `${total}/${rooms.length * CAPACITY}`);
-      setText('statToday', enteredToday);
-      setText('statRetiredToday', retiredToday);
+      setText('statToday', enteredToday > 0 ? `+${enteredToday}` : enteredToday);
+      setText('statRetiredToday', retiredToday > 0 ? `-${retiredToday}` : retiredToday);
       setText('statDirty', dirtyCount);
 
+      // Cập nhật ô hiển thị Biến Động Hôm Nay
       const diffEl = document.getElementById('statDiffToday');
       if (diffEl) {
-        diffEl.textContent = diffToday > 0 ? `+${diffToday}` : String(diffToday);
-        diffEl.style.color = diffToday > 0 ? 'var(--green)' : diffToday < 0 ? 'var(--red)' : '#64748b';
-        diffEl.style.fontWeight = '800';
-        diffEl.title = `Vào hôm nay ${enteredToday} - Nghỉ hôm nay ${retiredToday}`;
+        if (diffToday > 0) {
+          diffEl.textContent = `+${diffToday}`;
+          diffEl.style.color = "var(--green)";
+        } else if (diffToday < 0) {
+          diffEl.textContent = `${diffToday}`;
+          diffEl.style.color = "var(--red)";
+        } else {
+          diffEl.textContent = "0";
+          diffEl.style.color = "#64748b";
+        }
+        diffEl.title = `Vào hôm nay: ${enteredToday} | Nghỉ hôm nay: ${retiredToday}`;
       }
 
       const genderEl = document.getElementById('statGender');
@@ -2774,48 +2777,47 @@ if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
       }
     }
 
-async function adminClearAll() {
-  if (!confirm("CẢNH BÁO: Bạn có chắc chắn muốn xóa sạch toàn bộ dữ liệu?")) return;
-  if (!confirm("Thao tác này KHÔNG THỂ HOÀN TÁC. Tiếp tục?")) return;
+    async function adminClearAll() {
+      if (!confirm("CẢNH BÁO: Bạn có chắc chắn muốn xóa sạch toàn bộ dữ liệu?")) return;
+      if (!confirm("Thao tác này KHÔNG THỂ HOÀN TÁC. Tiếp tục?")) return;
 
-  const resetTimestamp = Date.now();
-  db = {}; 
-  logs = []; 
-  retiredList = []; 
-  syncQueue = []; 
-  lastSyncTimestamp = resetTimestamp;
+      const resetTimestamp = Date.now();
+      db = {}; 
+      logs = []; 
+      retiredList = []; 
+      syncQueue = []; 
+      lastSyncTimestamp = resetTimestamp;
 
-  normalizedDatabase();
-  persistLocalState();
-  persistSyncQueue();
-  await idbSet('localLastResetTime', resetTimestamp);
+      normalizeDatabase();
+      persistLocalState();
+      persistSyncQueue();
+      await idbSet('localLastResetTime', resetTimestamp);
 
-  // Xóa sạch cả phòng, người nghỉ, và toàn bộ lịch sử biến động trên Firebase
-  if (navigator.onLine && typeof firebase !== 'undefined' && firebase.database) {
-    try {
-      const dbRef = firebase.database();
-      await Promise.all([
-        dbRef.ref('rooms').set({}),
-        dbRef.ref('retired').set({}),
-        dbRef.ref('logs').set({}),
-        dbRef.ref('auditLogs').set({}),
-        dbRef.ref('metadata/rooms_summary').set({})
-      ]);
-      await dbRef.ref('metadata/lastResetTime').set(firebase.database.ServerValue.TIMESTAMP);
-    } catch (err) {
-      console.error("Lỗi khi xóa trắng dữ liệu máy chủ:", err);
+      if (navigator.onLine && typeof firebase !== 'undefined' && firebase.database) {
+        try {
+          const dbRef = firebase.database();
+          await Promise.all([
+            dbRef.ref('rooms').set({}),
+            dbRef.ref('retired').set({}),
+            dbRef.ref('logs').set({}),
+            dbRef.ref('auditLogs').set({}),
+            dbRef.ref('metadata/rooms_summary').set({})
+          ]);
+          await dbRef.ref('metadata/lastResetTime').set(firebase.database.ServerValue.TIMESTAMP);
+        } catch (err) {
+          console.error("Lỗi khi xóa trắng dữ liệu máy chủ:", err);
+        }
+      }
+
+      if (typeof localStorage !== 'undefined') localStorage.clear();
+      if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
+
+      renderRooms();
+      populateTargetRoomSelects();
+      closeModal('adminModal');
+      alert("Đã làm sạch toàn bộ dữ liệu và biến động phòng!");
+      location.reload();
     }
-  }
-
-  if (typeof localStorage !== 'undefined') localStorage.clear();
-  if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
-
-  renderRooms();
-  populateTargetRoomSelects();
-  closeModal('adminModal');
-  alert("Đã làm sạch toàn bộ dữ liệu và biến động phòng!");
-  location.reload();
-}
 
     function populateRowSelects() {
       const sel1 = document.getElementById('importRowSelect');
@@ -2863,7 +2865,6 @@ async function adminClearAll() {
       const example = [['NV001','NGUYỄN VĂN A','012345678901','Nam','01/01/1995','0900000000','Đà Nẵng','Ghi chú mẫu','01/10/2026','','D1-P01 - Dãy 1']];
       const ws = XLSX.utils.aoa_to_sheet([headers, ...example]);
       ws['!cols'] = headers.map(h => ({wch: Math.max(12, h.length + 3)}));
-      // Giữ CCCD và SĐT dạng text để Excel không chuyển thành số khoa học/mất số 0 đầu.
       ws['C2'] = { t: 's', v: '012345678901' };
       ws['F2'] = { t: 's', v: '0900000000' };
       const wb = XLSX.utils.book_new();
@@ -2893,22 +2894,22 @@ async function adminClearAll() {
       ws['!cols'] = headers.map(h => ({wch: Math.max(12, h.length + 3)}));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'CongNhan');
-      // Thêm Sheet Danh sách công nhân đã nghỉ việc
-    if (typeof retiredList !== 'undefined' && Array.isArray(retiredList) && retiredList.length > 0) {
-      const retiredRows = retiredList.map((w, idx) => ({
-        'STT': idx + 1,
-        'Mã NV': w.empId || w.id || '',
-        'Họ và Tên': w.name || w.fullName || '',
-        'CCCD': w.idCard || w.cccd || '',
-        'Giới Tính': w.gender || '',
-        'Phòng Cũ': w.oldRoom || w.room || '',
-        'Ngày Vào': w.joinDate || w.checkInDate || '',
-        'Ngày Nghỉ Việc': w.retireDate || '',
-        'Lý Do': w.reason || w.note || ''
-      }));
-      const retiredWs = XLSX.utils.json_to_sheet(retiredRows);
-      XLSX.utils.book_append_sheet(wb, retiredWs, 'DanhSachNghiViec');
-    }
+      
+      if (typeof retiredList !== 'undefined' && Array.isArray(retiredList) && retiredList.length > 0) {
+        const retiredRows = retiredList.map((w, idx) => ({
+          'STT': idx + 1,
+          'Mã NV': w.empId || w.id || '',
+          'Họ và Tên': w.name || w.fullName || '',
+          'CCCD': w.idCard || w.cccd || '',
+          'Giới Tính': w.gender || '',
+          'Phòng Cũ': w.oldRoom || w.room || '',
+          'Ngày Vào': w.joinDate || w.checkInDate || '',
+          'Ngày Nghỉ Việc': w.retireDate || '',
+          'Lý Do': w.reason || w.note || ''
+        }));
+        const retiredWs = XLSX.utils.json_to_sheet(retiredRows);
+        XLSX.utils.book_append_sheet(wb, retiredWs, 'DanhSachNghiViec');
+      }
       XLSX.writeFile(wb, `LangVan_DanhSach_${new Date().toISOString().slice(0,10)}.xlsx`);
     }
 
@@ -3113,52 +3114,53 @@ async function adminClearAll() {
         navigator.serviceWorker.register('./langvan-sw.js').catch(err => console.warn('PWA:', err));
       }
     });
+
     // ==================== HỆ THỐNG ÂM THANH & BÁO CHUÔNG ====================
-let isAudioNotifyEnabled = false;
-let audioCtx = null;
+    let isAudioNotifyEnabled = false;
+    let audioCtx = null;
 
-function toggleAudioNotify() {
-  isAudioNotifyEnabled = !isAudioNotifyEnabled;
-  const btn = document.getElementById('btnAudioNotify');
-  
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
+    function toggleAudioNotify() {
+      isAudioNotifyEnabled = !isAudioNotifyEnabled;
+      const btn = document.getElementById('btnAudioNotify');
+      
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
 
-  if (btn) {
-    if (isAudioNotifyEnabled) {
-      btn.innerHTML = '🔔 Đang Bật Chuông';
-      btn.style.background = '#16a34a';
-      playNotifyBeep(880, 0.15);
-    } else {
-      btn.innerHTML = '🔔 Bật Nhận Chuông';
-      btn.style.background = '#0284c7';
+      if (btn) {
+        if (isAudioNotifyEnabled) {
+          btn.innerHTML = '🔔 Đang Bật Chuông';
+          btn.style.background = '#16a34a';
+          playNotifyBeep(880, 0.15);
+        } else {
+          btn.innerHTML = '🔔 Bật Nhận Chuông';
+          btn.style.background = '#0284c7';
+        }
+      }
     }
-  }
-}
 
-function playNotifyBeep(freq = 660, duration = 0.2) {
-  try {
-    if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playNotifyBeep(freq = 660, duration = 0.2) {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {
+        console.warn("Lỗi phát âm thanh:", e);
+      }
     }
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + duration);
-  } catch (e) {
-    console.warn("Lỗi phát âm thanh:", e);
-  }
-}
   </script>
 </body>
 </html>
