@@ -5,10 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Lán Trại Làng Vân - Quản Lý 7000 Công Nhân</title>
   <meta name="theme-color" content="#1e3a8a">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Làng Vân">
   
   <!-- Thư viện SheetJS & jsQR -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -17,7 +13,6 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js"></script>
 
   <style>
     :root {
@@ -66,7 +61,6 @@
     .btn-scan { background: var(--green); color: white; }
     .btn-import { background: #d97706; color: white; }
     .btn-export { background: #334155; color: white; }
-    .btn[disabled] { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
     .room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 5px; min-height: 420px; }
     .room-card { 
       padding: 6px 7px; border-radius: 5px; border: 1.5px solid #cbd5e1; cursor: pointer; 
@@ -78,15 +72,8 @@
     .status-occupied .room-title { color: #16a34a !important; font-weight: 800; }
     .status-full { background: #fef2f2; border-color: var(--red); color: #991b1b; }
     .status-full .room-title { color: var(--red) !important; font-weight: 800; }
-    .status-lock { background: var(--gray-lock); color: #ffffff; border-color: #334155; }
-    .female-row { color: var(--red) !important; font-weight: bold; }
-    .room-absent-alert { background: #fee2e2; color: #dc2626; border: 1px solid #f87171; border-radius: 3px; padding: 1px 3px; font-size: 0.62rem; font-weight: bold; margin-top: 3px; }
     .room-dirty-alert { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; border-radius: 3px; padding: 1px 3px; font-size: 0.62rem; font-weight: bold; margin-top: 3px; }
     .room-custom-note { background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; font-weight: bold; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .fault-tags-container { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
-    .tag-btn { padding: 3px 7px; font-size: 0.68rem; border-radius: 3px; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer; }
-    .tag-btn.active { background: #ef4444; border-color: #b91c1c; color: white; font-weight: bold; }
-    .tag-btn-warning.active { background: #d97706 !important; border-color: #b45309 !important; color: white !important; font-weight: bold; }
     .modal { 
       display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); 
       z-index: 9999 !important; justify-content: center; align-items: center; padding: 8px; 
@@ -104,10 +91,6 @@
     table.data-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
     table.data-table th, table.data-table td { border: 1px solid var(--border); padding: 5px 4px; text-align: left; vertical-align: middle; }
     table.data-table th { background: #f1f5f9; white-space: nowrap; }
-    .att-box { display: flex; align-items: center; gap: 3px; flex-wrap: nowrap; }
-    .btn-att-action { padding: 2px 5px; border-radius: 3px; border: none; font-size: 0.65rem; cursor: pointer; font-weight: bold; color: white; }
-    .btn-att-yes { background: #16a34a; }
-    .btn-att-no { background: #dc2626; }
     .admin-feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; }
     .camera-wrapper { 
       position: relative; width: 100%; height: 260px; max-height: 38dvh; 
@@ -131,6 +114,7 @@
       header { padding: 7px 2px; margin-bottom: 6px; position: sticky; top: 0; z-index: 150; }
       .brand-title { font-size: 1rem; gap: 5px; }
       .brand-title span.capacity-info { display: none; }
+      .admin-feature-grid { grid-template-columns: repeat(2, 1fr); }
       .room-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 5px; }
       .mobile-quickbar { display: flex; }
       .mobile-quickbar button { flex: 1; min-height: 48px; border: 0; border-radius: 8px; font-weight: 800; font-size: .72rem; color: #fff; }
@@ -159,7 +143,7 @@
       <span id="syncIndicator" style="font-size: 0.7rem; color: #16a34a; font-weight: normal; margin-left: 8px; cursor: pointer;" onclick="initDatabaseListener()" title="Bấm vào đây để làm mới đồng bộ">🟢 Sẵn sàng</span>
     </div>
     <div style="display:flex; align-items:center;">
-      <button id="btnAudioNotify" onclick="toggleAudioNotify()" style="background:#0284c7;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:11px;font-weight:bold;cursor:pointer;margin-right:6px;">🔔 Bật Nhận Chuông</button>
+      <button id="btnAudioNotify" onclick="alert('Đã kích hoạt hệ thống chuông báo!')" style="background:#0284c7;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:11px;font-weight:bold;cursor:pointer;margin-right:6px;">🔔 Bật Nhận Chuông</button>
       <button id="btnTopAdmin" onclick="openAdminPanelClick()" class="btn" style="background:#334155; color:white; font-size:0.7rem;">🛡 Quản Trị</button>
     </div>
   </header>
@@ -182,7 +166,6 @@
       <div class="kpi-chip"><div class="lbl">Tổng Quân Số</div><div class="val" id="statTotal">0/7000</div></div>
       <div class="kpi-chip"><div class="lbl">Vào Hôm Nay</div><div class="val" id="statToday" style="color:var(--green);">0</div></div>
       <div class="kpi-chip"><div class="lbl">Nghỉ Trong Ngày</div><div class="val" id="statRetiredToday" style="color:var(--red);">0</div></div>
-      <div class="kpi-chip"><div class="lbl">Tăng Hôm Nay</div><div class="val" id="statDiffToday" style="color:var(--green); font-weight:bold;">0</div></div>
       <div class="kpi-chip"><div class="lbl">Nam / Nữ</div><div class="val" id="statGender">0/<span style="color:var(--red); font-weight:bold;">0</span></div></div>
       <div class="kpi-chip"><div class="lbl">Trống / Đầy (Đỏ)</div><div class="val" id="statRoomStatus">350/<span style="color:var(--red); font-weight:bold;">0</span></div></div>
       <div class="kpi-chip"><div class="lbl">🧹 Cần Dọn Dẹp</div><div class="val" id="statDirty" style="color:var(--warning-amber); font-weight:bold;">0</div></div>
@@ -217,6 +200,107 @@
   <!-- LƯỚI 350 PHÒNG -->
   <div class="room-grid no-print" id="roomGrid"></div>
 
+  <!-- MODAL QUẢN TRỊ VIÊN ĐẦY ĐỦ 6 TAB -->
+  <div class="modal" id="adminModal">
+    <div class="modal-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:6px;">
+        <h3 style="font-size:0.95rem; color:var(--red);">🛡️ TRANG QUẢN TRỊ VIÊN HỆ THỐNG</h3>
+        <button onclick="closeModal('adminModal')">✕ Đóng</button>
+      </div>
+
+      <!-- LƯỚI 6 NÚT TÍNH NĂNG ADMIN -->
+      <div class="admin-feature-grid">
+        <button class="btn" style="background:#0284c7; color:white; padding:8px; justify-content:center;" onclick="toggleSyncBox()">🔄 Đồng Bộ Dữ Liệu</button>
+        <button class="btn" style="background:#0f766e; color:white; padding:8px; justify-content:center;" onclick="openDeviceAuthModal()">👥 Duyệt Cán Bộ</button>
+        <button class="btn" style="background:#16a34a; color:white; padding:8px; justify-content:center;" onclick="exportDataExcel()">💾 Xuất Lưu Trữ (.xlsx)</button>
+        <button class="btn" style="background:#b45309; color:white; padding:8px; justify-content:center;" onclick="openRetiredHistoryModal()">📋 Hồ Sơ Nghỉ Việc</button>
+        <button class="btn" style="background:#7c3aed; color:white; padding:8px; justify-content:center;" onclick="openDamageReportSummary()">🛠️ Báo Hỏng / Vệ Sinh</button>
+        <button class="btn" style="background:#dc2626; color:white; padding:8px; justify-content:center;" onclick="adminClearAll()">🗑 Xóa Trắng Dữ Liệu</button>
+      </div>
+
+      <!-- KHUNG ĐỒNG BỘ NGOẠI TUYẾN / BACKUP JSON -->
+      <div id="syncBox" style="display:none; background:#f8fafc; border:1px dashed #0284c7; padding:8px; border-radius:4px; margin-bottom:8px;">
+        <div style="font-size:0.75rem; font-weight:bold; margin-bottom:4px; color:#0369a1;">ĐỒNG BỘ NGOẠI TUYẾN / DỰ PHÒNG:</div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn" style="background:#0284c7; color:white;" onclick="exportSyncFile()">1. Xuất file Đồng Bộ (.json)</button>
+          <input type="file" id="syncFileInput" accept=".json" style="display:none;" onchange="importSyncFile(event)">
+          <button class="btn" style="background:#0ea5e9; color:white;" onclick="document.getElementById('syncFileInput').click()">2. Nạp file Đồng Bộ</button>
+        </div>
+      </div>
+
+      <!-- KHUNG NHẬT KÝ THAO TÁC (AUDIT LOGS) -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin: 10px 0 4px 0;">
+        <span style="font-size:0.75rem; font-weight:bold;">Nhật ký thao tác (Audit Logs):</span>
+        <button onclick="clearAuditLogs()" class="btn" style="background:#64748b; color:white; padding:2px 6px; font-size:0.62rem;">Xóa Logs</button>
+      </div>
+      <div id="adminLogList" style="max-height:160px; overflow-y:auto; background:#f1f5f9; padding:6px; font-size:0.68rem; border:1px solid var(--border); border-radius:4px;">
+        <div>[Hệ thống] Đang tải danh sách nhật ký...</div>
+      </div>
+      <div style="height: 20px;"></div>
+    </div>
+  </div>
+
+  <!-- MODAL DUYỆT CÁN BỘ & THIẾT BỊ -->
+  <div class="modal" id="deviceAuthModal">
+    <div class="modal-content" style="max-width: 600px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:5px; margin-bottom:8px;">
+        <h3 style="font-size:0.95rem; color:#0f766e; font-weight:bold;">👥 DANH SÁCH THIẾT BỊ & DUYỆT CÁN BỘ</h3>
+        <button onclick="closeModal('deviceAuthModal')">✕ Đóng</button>
+      </div>
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr><th>Tên Cán Bộ</th><th>Mã Thiết Bị</th><th>Trạng Thái</th><th>Thao Tác</th></tr>
+          </thead>
+          <tbody id="deviceAuthBody">
+            <tr>
+              <td><b>Cán bộ trực</b></td>
+              <td>CB-01 (Máy này)</td>
+              <td><span style="color:var(--green); font-weight:bold;">✓ Quản Trị</span></td>
+              <td><button disabled style="opacity:0.5; padding:2px 5px;">Mặc định</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL HỒ SƠ NGHỈ VIỆC -->
+  <div class="modal" id="retiredModal">
+    <div class="modal-content" style="max-width: 580px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:5px; margin-bottom:8px;">
+        <h3 style="font-size:0.9rem; color:#b45309; font-weight:bold;">📋 DANH SÁCH CÔNG NHÂN ĐÃ NGHỈ VIỆC</h3>
+        <button onclick="closeModal('retiredModal')">✕ Đóng</button>
+      </div>
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr><th>Họ Tên</th><th>CCCD</th><th>Phòng Cũ</th><th>Lý Do / Ngày Nghỉ</th></tr>
+          </thead>
+          <tbody id="retiredWorkersBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL BÁO HỎNG CSVC & VỆ SINH TỔNG HỢP -->
+  <div class="modal" id="damageSummaryModal">
+    <div class="modal-content" style="max-width: 560px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:5px; margin-bottom:8px;">
+        <h3 style="font-size:0.9rem; color:#7c3aed; font-weight:bold;">🛠️ TỔNG HỢP BÁO HỎNG & VỆ SINH PHÒNG</h3>
+        <button onclick="closeModal('damageSummaryModal')">✕ Đóng</button>
+      </div>
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr><th>Phòng</th><th>Khu / Dãy</th><th>Tình Trạng</th><th>Thao Tác</th></tr>
+          </thead>
+          <tbody id="damageSummaryBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL GHI CHÚ NHANH CHO PHÒNG -->
   <div class="modal" id="roomNoteModal">
     <div class="modal-content" style="max-width: 420px; border: 2.5px solid #0284c7; padding: 16px;">
@@ -240,7 +324,8 @@
         <button onclick="closeModal('roomModal')">✕ Đóng</button>
       </div>
       <div style="display:flex; gap:4px; margin-bottom:6px; flex-wrap:wrap;">
-        <button onclick="toggleCleanRoom()" class="btn" style="background:#f59e0b; color:white;">🧹 Dọn Phòng Xong / Chưa Dọn</button>
+        <button onclick="toggleCleanRoom()" class="btn" style="background:#f59e0b; color:white;">🧹 Đổi Trạng Thái Dọn Dẹp</button>
+        <button onclick="openRoomNoteQuick()" class="btn" style="background:#0284c7; color:white;">📝 Ghi Chú Phòng</button>
         <button id="btnOpenAddForm" onclick="toggleWorkerForm()" class="btn" style="background:var(--primary); color:white;">➕ Thêm Công Nhân</button>
       </div>
       <div id="roomInputContainer" style="display:none; background:#f8fafc; border:1px solid var(--border); padding:6px; border-radius:4px; margin-bottom: 8px;">
@@ -306,53 +391,35 @@
         <h3 style="font-size:0.95rem; color:var(--navy);">📥 NHẬP FILE EXCEL</h3>
         <button onclick="closeModal('importModal')">✕ Đóng</button>
       </div>
-      <p style="font-size:0.75rem; color:#64748b; margin-bottom:10px;">Hệ thống sẽ tự động xếp công nhân vào các phòng còn trống.</p>
+      <p style="font-size:0.75rem; color:#64748b; margin-bottom:10px;">Tải lên file danh sách công nhân để tự động phân vào phòng:</p>
       <button onclick="document.getElementById('excelFileInput').click()" class="btn btn-import" style="width:100%; justify-content:center; padding:12px; font-size:0.9rem;">
         📂 Chọn File Excel (.xlsx, .xls)
       </button>
     </div>
   </div>
 
-  <!-- MODAL ADMIN -->
-  <div class="modal" id="adminModal">
-    <div class="modal-content">
-      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:6px;">
-        <h3 style="font-size:0.95rem; color:var(--red);">🛡️ TRANG QUẢN TRỊ VIÊN HỆ THỐNG</h3>
-        <button onclick="closeModal('adminModal')">✕ Đóng</button>
-      </div>
-      <div class="admin-feature-grid">
-        <button class="btn" style="background:#0284c7; color:white; padding:8px; justify-content:center;" onclick="initDatabaseListener()">🔄 Làm Mới Dữ Liệu</button>
-        <button class="btn" style="background:#16a34a; color:white; padding:8px; justify-content:center;" onclick="exportDataExcel()">💾 Xuất Excel Lưu Trữ</button>
-        <button class="btn" style="background:#dc2626; color:white; padding:8px; justify-content:center;" onclick="adminClearAll()">🗑 Xóa Trắng Dữ Liệu</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- SCRIPT LOGIC TOÀN BỘ HỆ THỐNG -->
+  <!-- JAVASCRIPT LOGIC ĐẦY ĐỦ -->
   <script>
     // 1. Cấu hình Firebase Realtime Database
     const firebaseConfig = {
-      apiKey: "AIzaSy...",
-      authDomain: "quan-ly-lan-trai.firebaseapp.com",
-      databaseURL: "https://quan-ly-lan-trai-default-rtdb.firebaseio.com",
-      projectId: "quan-ly-lan-trai",
-      storageBucket: "quan-ly-lan-trai.appspot.com",
-      messagingSenderId: "...",
-      appId: "..."
+      databaseURL: "https://quanlilantrailangvan-default-rtdb.asia-southeast1.firebasedatabase.app/"
     };
 
     let db = null;
     try {
-      if (typeof firebase !== 'undefined' && !firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
+      if (typeof firebase !== 'undefined') {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(firebaseConfig);
+        }
         db = firebase.database();
       }
     } catch(e) {
-      console.warn("Chế độ Local Storage (Chưa kết nối Firebase)", e);
+      console.warn("Lỗi khởi tạo Firebase, dùng LocalStorage:", e);
     }
 
-    // 2. Tạo 350 phòng (5 Khu, mỗi khu 5 dãy, mỗi dãy 14 phòng)
     let roomsData = {};
+    let auditLogs = [];
+    let retiredList = [];
     let currentSelectedRoomId = null;
     let cameraStream = null;
 
@@ -385,21 +452,53 @@
       });
     }
 
+    function addAuditLog(action) {
+      const timeStr = new Date().toLocaleTimeString('vi-VN') + " " + new Date().toLocaleDateString('vi-VN');
+      const user = document.getElementById("lblDeviceName").innerText;
+      const logEntry = `[${timeStr}] (${user}) ${action}`;
+      auditLogs.unshift(logEntry);
+      if (auditLogs.length > 50) auditLogs.pop();
+      renderAuditLogs();
+      try {
+        localStorage.setItem("langvan_logs", JSON.stringify(auditLogs));
+      } catch(e){}
+    }
+
+    function renderAuditLogs() {
+      const box = document.getElementById("adminLogList");
+      if (!box) return;
+      if (!auditLogs.length) {
+        box.innerHTML = "<div>Chưa có nhật ký nào được ghi nhận.</div>";
+        return;
+      }
+      box.innerHTML = auditLogs.map(l => `<div style="padding:2px 0; border-bottom:1px dotted #cbd5e1;">${l}</div>`).join("");
+    }
+
+    function clearAuditLogs() {
+      auditLogs = [];
+      localStorage.removeItem("langvan_logs");
+      renderAuditLogs();
+    }
+
     function saveLocal() {
       try {
         localStorage.setItem('langvan_rooms', JSON.stringify(roomsData));
+        localStorage.setItem('langvan_retired', JSON.stringify(retiredList));
       } catch (e) {}
     }
 
     function loadLocal() {
       const saved = localStorage.getItem('langvan_rooms');
+      const savedRet = localStorage.getItem('langvan_retired');
+      const savedLogs = localStorage.getItem('langvan_logs');
+      if (savedRet) try { retiredList = JSON.parse(savedRet); } catch(e){}
+      if (savedLogs) try { auditLogs = JSON.parse(savedLogs); } catch(e){}
       if (saved) {
         try { roomsData = JSON.parse(saved); return true; } catch(e) {}
       }
       return false;
     }
 
-    // 3. Render giao diện 350 phòng
     function renderRooms() {
       const grid = document.getElementById("roomGrid");
       const filterKhu = document.getElementById("selKhu").value;
@@ -456,9 +555,9 @@
       document.getElementById("statRoomStatus").innerHTML = `${350 - full}/<span style="color:var(--red); font-weight:bold;">${full}</span>`;
       document.getElementById("statDirty").innerText = dirty;
       document.getElementById("statGender").innerHTML = `${male}/<span style="color:var(--red); font-weight:bold;">${female}</span>`;
+      document.getElementById("statRetiredToday").innerText = retiredList.length;
     }
 
-    // 4. Modal và Thao tác Chi Tiết Phòng
     function openRoomDetail(roomId) {
       currentSelectedRoomId = roomId;
       const room = roomsData[roomId];
@@ -475,7 +574,7 @@
 
       (room.workers || []).forEach((w, idx) => {
         const tr = document.createElement("tr");
-        tr.className = w.gender === "Nữ" ? "female-row" : "";
+        tr.style.color = w.gender === "Nữ" ? "var(--red)" : "inherit";
         tr.innerHTML = `
           <td>${w.empId || '-'}</td>
           <td><b>${w.name}</b></td>
@@ -483,7 +582,8 @@
           <td>${w.idCard || '-'}</td>
           <td>${w.phone || '-'}</td>
           <td>
-            <button onclick="removeWorker(${idx})" style="background:#ef4444; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer;">Xóa</button>
+            <button onclick="retireWorker(${idx})" style="background:#b45309; color:white; border:none; padding:2px 5px; border-radius:3px; cursor:pointer; font-size:10px; margin-right:3px;">Nghỉ việc</button>
+            <button onclick="removeWorker(${idx})" style="background:#ef4444; color:white; border:none; padding:2px 5px; border-radius:3px; cursor:pointer; font-size:10px;">Xóa</button>
           </td>
         `;
         tbody.appendChild(tr);
@@ -504,20 +604,21 @@
       if (!room.workers) room.workers = [];
       if (room.workers.length >= 20) return alert("Phòng đã đủ 20 người!");
 
-      room.workers.push({
+      const newWorker = {
         name: name,
         idCard: idCard,
         empId: document.getElementById("rEmpId").value.trim(),
         gender: document.getElementById("rGender").value,
         phone: document.getElementById("rPhone").value.trim()
-      });
+      };
+      room.workers.push(newWorker);
 
-      // Clear input
       document.getElementById("rName").value = "";
       document.getElementById("rIdCard").value = "";
       document.getElementById("rEmpId").value = "";
       document.getElementById("rPhone").value = "";
 
+      addAuditLog(`Thêm công nhân ${name} vào phòng ${currentSelectedRoomId}`);
       saveLocal();
       syncToFirebase(currentSelectedRoomId);
       renderWorkersInRoom();
@@ -527,9 +628,31 @@
     function removeWorker(idx) {
       if (!confirm("Bạn có chắc muốn xóa công nhân này khỏi phòng?")) return;
       const room = roomsData[currentSelectedRoomId];
+      const wName = room.workers[idx].name;
       room.workers.splice(idx, 1);
+      addAuditLog(`Xóa công nhân ${wName} khỏi phòng ${currentSelectedRoomId}`);
       saveLocal();
       syncToFirebase(currentSelectedRoomId);
+      renderWorkersInRoom();
+      renderRooms();
+    }
+
+    function retireWorker(idx) {
+      const reason = prompt("Lý do nghỉ việc:", "Hết hạn hợp đồng / Nghỉ theo chế độ");
+      if (reason === null) return;
+      const room = roomsData[currentSelectedRoomId];
+      const w = room.workers.splice(idx, 1)[0];
+      retiredList.push({
+        name: w.name,
+        idCard: w.idCard || '-',
+        room: currentSelectedRoomId,
+        reason: reason,
+        date: new Date().toLocaleDateString('vi-VN')
+      });
+      addAuditLog(`Ghi nhận nghỉ việc cho công nhân ${w.name} (Phòng ${currentSelectedRoomId})`);
+      saveLocal();
+      syncToFirebase(currentSelectedRoomId);
+      if (db) db.ref("retired").set(retiredList);
       renderWorkersInRoom();
       renderRooms();
     }
@@ -537,12 +660,125 @@
     function toggleCleanRoom() {
       const room = roomsData[currentSelectedRoomId];
       room.isDirty = !room.isDirty;
+      addAuditLog(`Đổi trạng thái dọn dẹp phòng ${currentSelectedRoomId}: ${room.isDirty ? 'Chưa dọn' : 'Đã dọn sạch'}`);
       saveLocal();
       syncToFirebase(currentSelectedRoomId);
       renderRooms();
+      alert(`Đã đổi trạng thái phòng ${currentSelectedRoomId} thành: ${room.isDirty ? 'Chưa dọn' : 'Đã dọn sạch'}`);
     }
 
-    // 5. Quét CCCD Camera
+    function openRoomNoteQuick() {
+      const room = roomsData[currentSelectedRoomId];
+      document.getElementById("noteModalRoomTitle").innerText = `📝 GHI CHÚ PHÒNG ${room.id}`;
+      document.getElementById("txtQuickRoomNote").value = room.note || "";
+      document.getElementById("roomNoteModal").style.display = "flex";
+    }
+
+    function saveQuickRoomNote() {
+      const room = roomsData[currentSelectedRoomId];
+      room.note = document.getElementById("txtQuickRoomNote").value.trim();
+      addAuditLog(`Cập nhật ghi chú cho phòng ${currentSelectedRoomId}`);
+      saveLocal();
+      syncToFirebase(currentSelectedRoomId);
+      renderRooms();
+      closeModal("roomNoteModal");
+    }
+
+    function clearQuickRoomNote() {
+      document.getElementById("txtQuickRoomNote").value = "";
+      saveQuickRoomNote();
+    }
+
+    // Modal Admin tabs
+    function toggleSyncBox() {
+      const box = document.getElementById("syncBox");
+      box.style.display = box.style.display === "none" ? "block" : "none";
+    }
+
+    function openDeviceAuthModal() {
+      document.getElementById("deviceAuthModal").style.display = "flex";
+    }
+
+    function openRetiredHistoryModal() {
+      const tbody = document.getElementById("retiredWorkersBody");
+      if (!retiredList.length) {
+        tbody.innerHTML = "<tr><td colspan='4' style='text-align:center; color:#64748b;'>Chưa có dữ liệu nghỉ việc</td></tr>";
+      } else {
+        tbody.innerHTML = retiredList.map(r => `
+          <tr>
+            <td><b>${r.name}</b></td>
+            <td>${r.idCard}</td>
+            <td>${r.room}</td>
+            <td>${r.reason} (${r.date})</td>
+          </tr>
+        `).join("");
+      }
+      document.getElementById("retiredModal").style.display = "flex";
+    }
+
+    function openDamageReportSummary() {
+      const tbody = document.getElementById("damageSummaryBody");
+      const dirtyRooms = Object.values(roomsData).filter(r => r.isDirty || r.note);
+      if (!dirtyRooms.length) {
+        tbody.innerHTML = "<tr><td colspan='4' style='text-align:center; color:var(--green); font-weight:bold;'>Toàn bộ 350 phòng đã được dọn sạch và vận hành bình thường!</td></tr>";
+      } else {
+        tbody.innerHTML = dirtyRooms.map(r => `
+          <tr>
+            <td><b>${r.id}</b></td>
+            <td>${r.khu} - ${r.day}</td>
+            <td>${r.isDirty ? '<span style="color:#b45309;font-weight:bold;">🧹 Cần dọn</span> ' : ''}${r.note ? `[${r.note}]` : ''}</td>
+            <td><button onclick="resolveDamage('${r.id}')" style="background:#16a34a;color:white;border:none;padding:2px 6px;border-radius:3px;cursor:pointer;">Xong</button></td>
+          </tr>
+        `).join("");
+      }
+      document.getElementById("damageSummaryModal").style.display = "flex";
+    }
+
+    function resolveDamage(rId) {
+      if (roomsData[rId]) {
+        roomsData[rId].isDirty = false;
+        roomsData[rId].note = "";
+        saveLocal();
+        syncToFirebase(rId);
+        openDamageReportSummary();
+        renderRooms();
+      }
+    }
+
+    function exportSyncFile() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(roomsData));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `Backup_Phong_LangVan_${new Date().toISOString().slice(0,10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      addAuditLog("Xuất file sao lưu hệ thống JSON");
+    }
+
+    function importSyncFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (parsed && typeof parsed === 'object') {
+            roomsData = parsed;
+            saveLocal();
+            syncAllToFirebase();
+            renderRooms();
+            addAuditLog("Nạp file dữ liệu sao lưu ngoại tuyến vào hệ thống");
+            alert("Nạp file dữ liệu thành công!");
+          }
+        } catch(err) {
+          alert("File JSON không hợp lệ!");
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // Camera CCCD
     function handleScanAuthClick() {
       const select = document.getElementById("gTargetRoom");
       select.innerHTML = "";
@@ -592,7 +828,6 @@
     }
 
     function parseQRData(raw) {
-      // Định dạng QR CCCD: Số CCCD|Số CMND cũ|Họ tên|Ngày sinh|Giới tính|Địa chỉ|Ngày cấp
       const parts = raw.split("|");
       if (parts.length >= 5) {
         document.getElementById("gIdCard").value = parts[0] || "";
@@ -622,6 +857,7 @@
         phone: document.getElementById("gPhone").value.trim()
       });
 
+      addAuditLog(`Quét CCCD thêm công nhân ${name} vào ${targetRoom}`);
       saveLocal();
       syncToFirebase(targetRoom);
       renderRooms();
@@ -637,7 +873,6 @@
       closeModal("globalScanModal");
     }
 
-    // 6. Nhập / Xuất Excel
     function handleImportAuthClick() {
       document.getElementById("importModal").style.display = "flex";
     }
@@ -676,6 +911,7 @@
           }
         });
 
+        addAuditLog(`Nhập ${json.length} công nhân từ tệp Excel`);
         saveLocal();
         syncAllToFirebase();
         renderRooms();
@@ -706,16 +942,18 @@
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "DanhSachPhong");
       XLSX.writeFile(wb, "Danh_Sach_Cong_Nhan_Lang_Van.xlsx");
+      addAuditLog("Xuất file Excel toàn bộ dữ liệu phòng");
     }
 
-    // 7. Đồng bộ Firebase
+    // 8. Kết nối Firebase Realtime Database
     function initDatabaseListener() {
       const syncText = document.getElementById("syncIndicator");
       if (!db) {
-        if (syncText) syncText.innerText = "🟢 Bản Ngoại Tuyến (Offline)";
+        if (syncText) syncText.innerText = "🟢 Hoạt động (Ngoại tuyến)";
         return;
       }
-      syncText.innerText = "🟡 Đang đồng bộ...";
+      syncText.innerText = "🟡 Đang kết nối...";
+      
       db.ref("rooms").on("value", snapshot => {
         const val = snapshot.val();
         if (val) {
@@ -727,6 +965,15 @@
       }, err => {
         syncText.innerText = "🔴 Lỗi kết nối Firebase";
         console.error(err);
+      });
+
+      db.ref("retired").on("value", snapshot => {
+        const val = snapshot.val();
+        if (val && Array.isArray(val)) {
+          retiredList = val;
+          saveLocal();
+          updateDashboard();
+        }
       });
     }
 
@@ -742,7 +989,6 @@
       }
     }
 
-    // 8. Các tiện ích khác
     function handleSearch(val) {
       val = val.toLowerCase().trim();
       const cards = document.querySelectorAll(".room-card");
@@ -756,6 +1002,7 @@
     }
 
     function openAdminPanelClick() {
+      renderAuditLogs();
       document.getElementById("adminModal").style.display = "flex";
     }
 
@@ -764,25 +1011,24 @@
       if (newName) {
         document.getElementById("lblDeviceName").innerText = newName;
         localStorage.setItem("langvan_cb_name", newName);
+        addAuditLog(`Đổi tên cán bộ thành ${newName}`);
       }
     }
 
     function adminClearAll() {
       if (confirm("CẢNH BÁO: Thao tác này sẽ xóa sạch dữ liệu toàn bộ 350 phòng về ban đầu. Bạn có chắc không?")) {
         initDefaultRooms();
+        retiredList = [];
         saveLocal();
         syncAllToFirebase();
+        if (db) db.ref("retired").remove();
         renderRooms();
         closeModal("adminModal");
+        addAuditLog("QUẢN TRỊ VIÊN ĐÃ XÓA TRẮNG TOÀN BỘ DỮ LIỆU");
         alert("Đã thiết lập lại dữ liệu trắng!");
       }
     }
 
-    function toggleAudioNotify() {
-      alert("Đã bật nhận thông báo chuông!");
-    }
-
-    // 9. Khởi chạy ứng dụng
     window.addEventListener("DOMContentLoaded", () => {
       const savedName = localStorage.getItem("langvan_cb_name");
       if (savedName) document.getElementById("lblDeviceName").innerText = savedName;
