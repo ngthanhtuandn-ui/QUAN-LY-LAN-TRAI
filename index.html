@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Làng Vân">
-  <link rel="manifest" href="langvan-manifest.json">
+  
   <!-- Thư viện SheetJS & jsQR -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
@@ -76,13 +76,10 @@
     .status-white { background: #ffffff; border-color: #cbd5e1; }
     .status-occupied { background: #f0fdf4; border-color: #86efac; color: #166534; }
     .status-occupied .room-title { color: #16a34a !important; font-weight: 800; }
-    .status-pink { background: #ecfdf5; border-color: #16a34a; color: #166534; }
-    .status-pink .room-title { color: #15803d !important; font-weight: 800; }
     .status-full { background: #fef2f2; border-color: var(--red); color: #991b1b; }
     .status-full .room-title { color: var(--red) !important; font-weight: 800; }
     .status-lock { background: var(--gray-lock); color: #ffffff; border-color: #334155; }
     .female-row { color: var(--red) !important; font-weight: bold; }
-    .badge-tag { font-size: 0.62rem; padding: 1px 4px; border-radius: 3px; background: #e2e8f0; }
     .room-absent-alert { background: #fee2e2; color: #dc2626; border: 1px solid #f87171; border-radius: 3px; padding: 1px 3px; font-size: 0.62rem; font-weight: bold; margin-top: 3px; }
     .room-dirty-alert { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; border-radius: 3px; padding: 1px 3px; font-size: 0.62rem; font-weight: bold; margin-top: 3px; }
     .room-custom-note { background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; font-weight: bold; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -108,14 +105,9 @@
     table.data-table th, table.data-table td { border: 1px solid var(--border); padding: 5px 4px; text-align: left; vertical-align: middle; }
     table.data-table th { background: #f1f5f9; white-space: nowrap; }
     .att-box { display: flex; align-items: center; gap: 3px; flex-wrap: nowrap; }
-    .att-badge { padding: 2px 5px; border-radius: 3px; font-size: 0.65rem; font-weight: bold; border: 1px solid var(--border); display: inline-block; white-space: nowrap; }
-    .att-none { background: #f1f5f9; color: #64748b; }
-    .att-present { background: #dcfce7; color: #166534; border-color: #86efac; }
-    .att-absent { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
     .btn-att-action { padding: 2px 5px; border-radius: 3px; border: none; font-size: 0.65rem; cursor: pointer; font-weight: bold; color: white; }
     .btn-att-yes { background: #16a34a; }
     .btn-att-no { background: #dc2626; }
-    .btn-att-reset { background: #94a3b8; }
     .admin-feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; }
     .camera-wrapper { 
       position: relative; width: 100%; height: 260px; max-height: 38dvh; 
@@ -129,64 +121,23 @@
       box-shadow: 0 0 0 9999px rgba(0,0,0,0.5); pointer-events: none; 
       display: flex; justify-content: center; align-items: flex-end; 
     }
-    .scan-guide-box::after {
-      content: "ĐẶT MÃ QR VÀO ĐÂY";
-      position: absolute; bottom: -24px; left: 0; right: 0;
-      color: #22c55e; font-size: 11px; font-weight: 800; text-align: center;
-      text-shadow: 0 1px 2px #000;
-    }
     .mobile-quickbar { 
       display: none; position: fixed; left: 0; right: 0; bottom: 0; 
       z-index: 500; background: #fff; border-top: 1px solid #cbd5e1; 
       box-shadow: 0 -3px 12px rgba(0,0,0,.12); padding: 5px 6px calc(5px + env(safe-area-inset-bottom)); gap: 5px; 
     }
-    body.modal-open .mobile-quickbar { display: none !important; }
     @media (max-width: 700px) {
       body { padding: 4px 6px 72px; font-size: 13px; overflow-x: hidden; }
       header { padding: 7px 2px; margin-bottom: 6px; position: sticky; top: 0; z-index: 150; }
-      .brand-title { font-size: 1rem; gap: 5px; min-width: 0; }
-      .brand-title .icon-camp { font-size: 1.45rem; }
+      .brand-title { font-size: 1rem; gap: 5px; }
       .brand-title span.capacity-info { display: none; }
-      #syncIndicator { display: inline-block; font-size: .58rem !important; margin-left: 4px !important; }
-      .dashboard-container { margin-bottom: 5px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-      .kpi-chip { min-width: 76px; padding: 4px 5px; }
-      .kpi-chip .lbl { font-size: .5rem; }
-      .kpi-chip .val { font-size: .7rem; }
-      .toolbar-container { margin-bottom: 6px; }
-      .compact-toolbar { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 5px; }
-      .compact-toolbar input#mainSearch { width: 100%; grid-column: 1 / -1; min-height: 40px; font-size: .9rem; }
-      .compact-toolbar select { width: 100% !important; min-height: 38px; font-size: .8rem; }
-      .compact-toolbar .btn { min-height: 38px; justify-content: center; font-size: .78rem; }
-      .room-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 5px; min-height: 300px; }
-      .room-card { min-height: 76px; padding: 7px; font-size: .75rem; }
-      .modal { padding: 0; align-items: stretch; }
-      .modal-content { 
-        max-width: none !important; width: 100%; height: 100dvh; max-height: 100dvh; 
-        border-radius: 0; padding: 10px 10px 60px 10px !important; 
-        overflow-y: auto !important; -webkit-overflow-scrolling: touch; 
-      }
-      #transferModal .modal-content, #roomNoteModal .modal-content {
-        height: auto !important; max-height: 90vh !important;
-        margin: auto; border-radius: 8px !important;
-        width: 92% !important; padding: 16px !important;
-      }
-      .form-row { flex-direction: column; gap: 5px; }
-      .form-row input, .form-row select, .form-row textarea { min-height: 38px; font-size: 15px; }
-      .btn { min-height: 38px; padding: 8px 10px; font-size: .78rem; }
+      .room-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 5px; }
       .mobile-quickbar { display: flex; }
       .mobile-quickbar button { flex: 1; min-height: 48px; border: 0; border-radius: 8px; font-weight: 800; font-size: .72rem; color: #fff; }
       .mobile-quickbar .scan { background: #16a34a; }
       .mobile-quickbar .search { background: #1d4ed8; }
       .mobile-quickbar .import { background: #d97706; }
       .mobile-quickbar .admin { background: #475569; }
-      .camera-wrapper { height: 240px; }
-      .scan-guide-box { width: 160px; height: 160px; }
-    }
-    @media print {
-      body * { visibility: hidden; }
-      .no-print { display: none !important; }
-      #printableArea, #printableArea * { visibility: visible; }
-      #printableArea { position: absolute; left: 0; top: 0; width: 100%; display: block !important; padding: 15px; }
     }
   </style>
 </head>
@@ -205,23 +156,22 @@
       <span class="icon-camp">🏕️</span>
       <span>LÁN TRẠI LÀNG VÂN</span>
       <span class="capacity-info">(350 Phòng - Sức chứa 7000)</span>
-      <span id="syncIndicator" style="font-size: 0.7rem; color: #16a34a; font-weight: normal; margin-left: 8px; cursor: pointer;" onclick="forceFullResync()" title="Bấm vào đây để ép buộc đồng bộ dữ liệu mới nhất">🟢 Đang khởi tạo...</span>
+      <span id="syncIndicator" style="font-size: 0.7rem; color: #16a34a; font-weight: normal; margin-left: 8px; cursor: pointer;" onclick="initDatabaseListener()" title="Bấm vào đây để làm mới đồng bộ">🟢 Sẵn sàng</span>
     </div>
     <div style="display:flex; align-items:center;">
       <button id="btnAudioNotify" onclick="toggleAudioNotify()" style="background:#0284c7;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:11px;font-weight:bold;cursor:pointer;margin-right:6px;">🔔 Bật Nhận Chuông</button>
-      <button id="btnTopAdmin" onclick="openAdminPanelClick()" class="btn" style="background:#334155; color:white; font-size:0.7rem; display:none;">🛡️️ Quản Trị</button>
+      <button id="btnTopAdmin" onclick="openAdminPanelClick()" class="btn" style="background:#334155; color:white; font-size:0.7rem;">🛡 Quản Trị</button>
     </div>
   </header>
 
   <!-- THANH BÁO QUYỀN VÀ TÊN CÁN BỘ -->
   <div class="role-bar no-print" id="deviceAuthNotice">
     <div>
-      <span>👤 Cán bộ: <b id="lblDeviceName" style="color:var(--navy);">...</b> (<span id="lblDeviceId">...</span>)</span>
+      <span>👤 Cán bộ: <b id="lblDeviceName" style="color:var(--navy);">Cán bộ trực</b> (<span id="lblDeviceId">CB-01</span>)</span>
       <button class="btn-rename-device" onclick="renameCurrentDevice()">✏️ Đổi Tên</button>
     </div>
     <div style="display:flex; align-items:center; gap:6px;">
-      <span>Quyền: <b id="lblUserRole" style="color:#d97706;">Đang kiểm tra...</b></span>
-      <span id="lblRoleHelp" style="color:#64748b; margin-left:4px;">(Chỉ xem - Liên hệ Admin duyệt)</span>
+      <span>Quyền: <b id="lblUserRole" style="color:#16a34a;">Quản trị viên / Đã cấp quyền</b></span>
     </div>
   </div>
 
@@ -236,7 +186,6 @@
       <div class="kpi-chip"><div class="lbl">Nam / Nữ</div><div class="val" id="statGender">0/<span style="color:var(--red); font-weight:bold;">0</span></div></div>
       <div class="kpi-chip"><div class="lbl">Trống / Đầy (Đỏ)</div><div class="val" id="statRoomStatus">350/<span style="color:var(--red); font-weight:bold;">0</span></div></div>
       <div class="kpi-chip"><div class="lbl">🧹 Cần Dọn Dẹp</div><div class="val" id="statDirty" style="color:var(--warning-amber); font-weight:bold;">0</div></div>
-      <div class="kpi-chip"><div class="lbl">🟢 Biến Động Phòng</div><div class="val" id="statMod" style="color:var(--pink-dark); font-weight:bold;">0</div></div>
     </div>
   </div>
 
@@ -255,12 +204,10 @@
       <select id="selRoomStatusFilter" onchange="renderRooms()" style="width: 110px; font-weight:600;">
         <option value="ALL">Tất cả trạng thái</option>
         <option value="DIRTY">🧹 Phòng bẩn / Chưa dọn</option>
-        <option value="PINK">Phòng biến động (Xanh)</option>
         <option value="FULL">Phòng đầy (Đỏ)</option>
         <option value="AVAILABLE">Phòng còn chỗ</option>
-        <option value="DAMAGE">Phòng báo hỏng</option>
       </select>
-      <input type="text" id="mainSearch" placeholder="Tìm tên, CCCD, Mã NV, SĐT..." oninput="handleSearch(this.value)">
+      <input type="text" id="mainSearch" placeholder="Tìm tên, CCCD, Mã NV..." oninput="handleSearch(this.value)">
       <input type="file" id="excelFileInput" accept=".xlsx, .xls, .csv" style="display:none;" onchange="handleExcelUpload(event)">
       <button class="btn btn-import" id="btnImportTop" onclick="handleImportAuthClick()">📥 Nhập Excel</button>
       <button class="btn btn-export" onclick="exportDataExcel()">📤 Xuất Excel</button>
@@ -275,10 +222,9 @@
     <div class="modal-content" style="max-width: 420px; border: 2.5px solid #0284c7; padding: 16px;">
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #e2e8f0; padding-bottom:6px; margin-bottom:10px;">
         <h3 id="noteModalRoomTitle" style="font-size:1.05rem; color:#0284c7; font-weight:800;">📝 GHI CHÚ PHÒNG</h3>
-        <button onclick="closeModal('roomNoteModal')" style="padding: 4px 8px; font-weight: bold; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px;">✕ Đóng</button>
+        <button onclick="closeModal('roomNoteModal')">✕ Đóng</button>
       </div>
-      <p style="font-size:0.75rem; color:#64748b; margin-bottom:6px;">Ghi chú thông tin nội bộ (hiển thị ngay ngoài thẻ phòng):</p>
-      <textarea id="txtQuickRoomNote" rows="3" style="width:100%; padding:8px; border:1.5px solid var(--border); border-radius:4px; font-size:0.85rem;" placeholder="Ví dụ: Đội thợ cơ điện, Trưởng phòng anh Tuấn..."></textarea>
+      <textarea id="txtQuickRoomNote" rows="3" style="width:100%; padding:8px; border:1.5px solid var(--border); border-radius:4px; font-size:0.85rem;" placeholder="Ghi chú nội bộ..."></textarea>
       <div style="display:flex; gap:8px; margin-top:10px;">
         <button onclick="saveQuickRoomNote()" class="btn" style="flex:2; background:#0284c7; color:white; justify-content:center; padding:10px; font-weight:bold;">💾 Lưu Ghi Chú</button>
         <button onclick="clearQuickRoomNote()" class="btn" style="flex:1; background:#ef4444; color:white; justify-content:center; padding:10px;">Xóa</button>
@@ -286,113 +232,16 @@
     </div>
   </div>
 
-  <!-- MODAL ĐIỀU CHUYỂN PHÒNG -->
-  <div class="modal" id="transferModal">
-    <div class="modal-content" style="max-width: 440px; border: 2.5px solid var(--primary); padding: 16px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #e2e8f0; padding-bottom:6px; margin-bottom:10px;">
-        <h3 style="font-size:1.05rem; color:var(--primary); font-weight:800;">🔄 ĐIỀU CHUYỂN PHÒNG Ở</h3>
-        <button onclick="closeModal('transferModal')" style="padding: 5px 10px; font-weight: bold; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px;">✕ Đóng</button>
-      </div>
-      <div style="background:#f1f5f9; padding:10px; border-radius:6px; margin-bottom:12px; font-size:0.85rem; border-left:4px solid var(--primary);">
-        <div>Công nhân: <strong id="transferWorkerName" style="color:var(--navy); font-size:0.95rem;">...</strong></div>
-        <div style="margin-top:4px;">Phòng hiện tại: <span id="transferCurrentRoom" style="font-weight:bold; color:var(--red);"></span></div>
-      </div>
-      <div class="form-row">
-        <div class="col">
-          <label style="font-weight:bold; font-size:0.75rem; color:#334155;">1. Chọn Dãy Đích Đến:</label>
-          <select id="transferRowSelect" onchange="updateTransferRoomList()" style="padding:8px; font-weight:bold; font-size:0.85rem;"></select>
-        </div>
-      </div>
-      <div class="form-row" style="margin-top:6px;">
-        <div class="col">
-          <label style="font-weight:bold; font-size:0.75rem; color:#334155;">2. Chọn Phòng Còn Chỗ:</label>
-          <select id="transferTargetSelect" style="padding:8px; font-weight:bold; color:var(--primary); font-size:0.85rem;"></select>
-        </div>
-      </div>
-      <div style="display:flex; gap:8px; margin-top:16px;">
-        <button onclick="confirmTransferWorker()" class="btn" style="flex:2; background:#16a34a; color:white; justify-content:center; padding:11px; font-size:0.85rem; font-weight:bold;">✓ Xác Nhận Chuyển</button>
-        <button onclick="closeModal('transferModal')" class="btn" style="flex:1; background:#64748b; color:white; justify-content:center; padding:11px; font-size:0.85rem;">Hủy Bỏ</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL NHẬP EXCEL -->
-  <div class="modal" id="importModal">
-    <div class="modal-content" style="max-width: 520px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:5px;">
-        <h3 style="font-size:0.95rem; color:var(--navy);">📥 NHẬP FILE EXCEL CÔNG NHÂN</h3>
-        <button onclick="closeModal('importModal')" style="padding: 4px 8px; font-weight: bold;">✕ Đóng</button>
-      </div>
-      <div class="form-row" style="margin-bottom:8px;">
-        <div class="col">
-          <label style="font-weight:bold;">Chế Độ Xếp Phòng:</label>
-          <select id="importModeSelect" onchange="toggleImportTarget()" style="font-weight:bold; color:var(--primary); padding:6px;">
-            <option value="AUTO">1. Tự động lấp đầy liên tục các phòng còn trống</option>
-            <option value="TARGET_ROW">2. Chỉ nạp vào một Dãy chỉ định</option>
-            <option value="TARGET_ROOM">3. Bắt đầu nạp từ một Phòng chỉ định cụ thể</option>
-            <option value="TARGET_AREA">4. Chỉ nạp vào một Khu chỉ định (A, B, C, D, E)</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-row" id="importRowContainer" style="display:none; margin-bottom:8px;">
-        <div class="col"><label style="font-weight:bold;">Chọn Dãy Đích:</label><select id="importRowSelect" style="padding:6px;"></select></div>
-      </div>
-      <div class="form-row" id="importRoomContainer" style="display:none; margin-bottom:8px;">
-        <div class="col"><label style="font-weight:bold;">Bắt Đầu Từ Phòng:</label><select id="importRoomStartSelect" style="padding:6px;"></select></div>
-      </div>
-      <div class="form-row" id="importAreaContainer" style="display:none; margin-bottom:8px;">
-        <div class="col"><label style="font-weight:bold;">Chọn Khu Đích:</label>
-          <select id="importAreaSelect" style="padding:6px;">
-            <option value="Khu A">Khu A (Dãy 1-5)</option>
-            <option value="Khu B">Khu B (Dãy 6-10)</option>
-            <option value="Khu C">Khu C (Dãy 11-15)</option>
-            <option value="Khu D">Khu D (Dãy 16-20)</option>
-            <option value="Khu E">Khu E (Dãy 21-25)</option>
-          </select>
-        </div>
-      </div>
-      <div style="display:flex; gap:5px; margin-top:6px;">
-        <button onclick="document.getElementById('excelFileInput').click()" class="btn btn-import" style="flex:2; justify-content:center; padding:10px; font-size:0.85rem;">
-          📂 Chọn Tệp Excel (.xlsx, .xls, .csv)
-        </button>
-        <button onclick="downloadExcelTemplate()" class="btn" style="flex:1; justify-content:center; background:#0f766e; color:white; padding:10px;">📋 Mẫu Excel</button>
-      </div>
-    </div>
-  </div>
-
   <!-- MODAL CHI TIẾT PHÒNG -->
   <div class="modal" id="roomModal">
     <div class="modal-content">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; position: sticky; top: -10px; background: white; z-index: 10; padding: 4px 0;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
         <h3 id="roomModalTitle" style="font-size:1rem; color:var(--navy); font-weight: 800;">Chi Tiết Phòng</h3>
-        <button onclick="closeModal('roomModal')" style="padding: 4px 10px; font-weight: bold; background: #e2e8f0; border-radius: 4px; border: none;">✕ Đóng</button>
+        <button onclick="closeModal('roomModal')">✕ Đóng</button>
       </div>
       <div style="display:flex; gap:4px; margin-bottom:6px; flex-wrap:wrap;">
-        <button id="btnLock" onclick="toggleLockRoom()" class="btn edit-required" style="border:1px solid var(--border); font-size:0.7rem;"></button>
-        <button onclick="batchSetAttendance(true)" class="btn edit-required" style="background:var(--green); color:white; font-size:0.7rem;">ĐỦ cả phòng</button>
-        <button onclick="batchSetAttendance(false)" class="btn edit-required" style="background:#e11d48; color:white; font-size:0.7rem;">VẮNG cả phòng</button>
-        <button onclick="batchClearAttendance()" class="btn edit-required" style="background:#64748b; color:white; font-size:0.7rem;">Đặt về Trống (-)</button>
-        <button onclick="triggerPrintRoomList()" class="btn" style="background:#0284c7; color:white; font-size:0.7rem;">🖨 In Danh Sách</button>
-      </div>
-      <div style="background:#fffbeb; border:1px solid #fef3c7; padding:5px; border-radius:4px; margin-bottom:6px;">
-        <div style="font-size:0.65rem; font-weight:bold; color:#b45309; margin-bottom:2px;">BÁO HỎNG CSVC & TÌNH TRẠNG VỆ SINH PHÒNG:</div>
-        <div class="fault-tags-container">
-          <button class="tag-btn tag-btn-warning edit-required" id="tag_Ban" onclick="toggleDamageTag('Phòng bẩn / Chưa dọn')" style="border-color:#f59e0b; color:#b45309;">🧹 Phòng bẩn / Chưa dọn</button>
-          <button class="tag-btn edit-required" id="tag_Quat" onclick="toggleDamageTag('Hỏng Quạt')">Hỏng Quạt</button>
-          <button class="tag-btn edit-required" id="tag_Dien" onclick="toggleDamageTag('Hỏng Điện')">Hỏng Điện</button>
-          <button class="tag-btn edit-required" id="tag_DieuHoa" onclick="toggleDamageTag('Hỏng Điều Hòa')">Hỏng Điều Hòa</button>
-          <button class="tag-btn edit-required" id="tag_OCam" onclick="toggleDamageTag('Hỏng Ổ Cắm')">Hỏng Ổ Cắm</button>
-        </div>
-      </div>
-      <div style="background:#f1f5f9; padding:5px 8px; border-radius:4px; margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;">
-        <div style="display:flex; align-items:center; gap:6px;">
-          <span style="font-size:0.75rem; font-weight:bold; color:var(--navy);">Ngày điểm danh:</span>
-          <input type="date" id="attendanceDateInput" onchange="renderWorkersInRoom()" style="padding:3px 6px; font-size:0.75rem; border:1.5px solid var(--primary); border-radius:3px; font-weight:bold;">
-        </div>
-      </div>
-      <div style="display:flex; justify-content:space-between; align-items:center; margin: 8px 0 4px 0;">
-        <span style="font-weight:700; font-size:0.8rem; color:var(--primary);">📋 Danh sách công nhân (<span id="curRoomCount">0</span>/20):</span>
-        <button id="btnOpenAddForm" onclick="toggleWorkerForm()" class="btn edit-required" style="background:#475569; color:white; font-size:0.68rem; padding:3px 8px;">➕ Thêm Công Nhân</button>
+        <button onclick="toggleCleanRoom()" class="btn" style="background:#f59e0b; color:white;">🧹 Dọn Phòng Xong / Chưa Dọn</button>
+        <button id="btnOpenAddForm" onclick="toggleWorkerForm()" class="btn" style="background:var(--primary); color:white;">➕ Thêm Công Nhân</button>
       </div>
       <div id="roomInputContainer" style="display:none; background:#f8fafc; border:1px solid var(--border); padding:6px; border-radius:4px; margin-bottom: 8px;">
         <div class="form-row">
@@ -402,12 +251,7 @@
         </div>
         <div class="form-row">
           <div class="col"><label>Số CCCD *</label><input type="text" id="rIdCard"></div>
-          <div class="col"><label>Ngày Sinh (dd/mm/yyyy)</label><input type="text" id="rDob" placeholder="dd/mm/yyyy" oninput="applyDateMask(this)"></div>
           <div class="col"><label>Số ĐT</label><input type="text" id="rPhone"></div>
-        </div>
-        <div class="form-row">
-          <div class="col"><label>Địa Chỉ</label><input type="text" id="rAddress"></div>
-          <div class="col"><label>Ghi Chú</label><input type="text" id="rNote"></div>
         </div>
         <button onclick="addWorkerDirect()" class="btn" style="width:100%; background:var(--primary); color:white; justify-content:center; margin-top:3px; font-weight:bold;">Lưu Vào Phòng</button>
       </div>
@@ -415,66 +259,29 @@
         <table class="data-table">
           <thead>
             <tr>
-              <th>Mã NV</th><th>Họ Tên</th><th>CCCD</th><th>Địa Chỉ</th><th>Điểm Danh</th><th>Ghi Chú</th><th>Chuyển</th><th>Xử Lý</th>
+              <th>Mã NV</th><th>Họ Tên</th><th>Giới Tính</th><th>CCCD</th><th>SĐT</th><th>Xử Lý</th>
             </tr>
           </thead>
           <tbody id="roomWorkersBody"></tbody>
         </table>
       </div>
-      <div style="height: 50px;"></div>
-    </div>
-  </div>
-
-  <!-- MODAL SỬA TOÀN BỘ HỒ SƠ -->
-  <div class="modal" id="editWorkerModal">
-    <div class="modal-content" style="max-width:650px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:8px;">
-        <h3 style="font-size:.9rem;">✏️ Sửa toàn bộ thông tin công nhân</h3>
-        <button onclick="closeModal('editWorkerModal')" style="padding: 4px 8px; font-weight: bold;">✕ Đóng</button>
-      </div>
-      <input type="hidden" id="editWorkerIdx">
-      <div class="form-row">
-        <div class="col"><label>Mã NV</label><input id="eEmpId"></div>
-        <div class="col"><label>Họ và Tên *</label><input id="eName"></div>
-        <div class="col" style="max-width:90px"><label>Giới Tính</label><select id="eGender"><option>Nam</option><option>Nữ</option></select></div>
-      </div>
-      <div class="form-row">
-        <div class="col"><label>CCCD *</label><input id="eIdCard"></div>
-        <div class="col"><label>Ngày Sinh</label><input id="eDob" placeholder="dd/mm/yyyy"></div>
-        <div class="col"><label>SĐT</label><input id="ePhone"></div>
-      </div>
-      <div class="form-row">
-        <div class="col"><label>Địa Chỉ</label><input id="eAddress"></div>
-        <div class="col"><label>Ghi Chú</label><input id="eNote"></div>
-      </div>
-      <div class="form-row">
-        <div class="col"><label>Ngày Vào</label><input id="eJoinDate"></div>
-        <div class="col"><label>Ngày Nghỉ</label><input id="eLeaveDate" type="date"></div>
-      </div>
-      <button onclick="saveWorkerAllEdit()" class="btn" style="width:100%;background:var(--primary);color:white;justify-content:center;margin-top:5px;padding:9px;font-weight:bold;">💾 Lưu toàn bộ thông tin</button>
-      <div style="height: 30px;"></div>
     </div>
   </div>
 
   <!-- MODAL QUÉT CCCD BẰNG CAMERA -->
   <div class="modal" id="globalScanModal">
     <div class="modal-content">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; position: sticky; top: -10px; background: white; z-index: 10; padding: 4px 0;">
-        <h3 style="font-size:0.95rem; font-weight: bold; color: var(--navy);">Quét Thẻ CCCD Qua Camera</h3>
-        <button onclick="closeGlobalScanner()" style="padding: 4px 10px; font-weight: bold; background: #e2e8f0; border: none; border-radius: 4px;">✕ Đóng</button>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <h3 style="font-size:0.95rem; font-weight: bold; color: var(--navy);">Quét Mã QR CCCD</h3>
+        <button onclick="closeGlobalScanner()">✕ Đóng</button>
       </div>
       <div class="camera-wrapper">
         <video id="camVideo" playsinline autoplay muted></video>
         <div class="scan-guide-box"></div>
       </div>
       <canvas id="qrCanvas" style="display:none;"></canvas>
-      <div id="camStatusMsg" style="font-size:0.75rem; color:var(--primary); font-weight:bold; margin: 6px 0; text-align:center;">Đang khởi tạo camera...</div>
-      <div style="display:flex; justify-content:center; gap:8px; margin:8px 0; flex-wrap:wrap;">
-        <button onclick="toggleCameraFacing()" class="btn" style="background:#4f46e5; color:white; padding: 8px 14px; font-weight:bold;">🔄 Đổi Cam</button>
-        <input type="file" id="fileCccdQuick" accept="image/*" onchange="handleFileCCCDQuick(this)" style="display:none;">
-        <button onclick="document.getElementById('fileCccdQuick').click()" class="btn" style="background:#475569; color:white; padding: 8px 14px; font-weight:bold;">🖼 Tải Ảnh CCCD</button>
-      </div>
-      <div style="background:#f8fafc; padding:8px; border-radius:4px; border:1px solid var(--border); margin-bottom: 20px;">
+      <div id="camStatusMsg" style="font-size:0.75rem; color:var(--primary); font-weight:bold; margin: 6px 0; text-align:center;">Hướng camera vào mã QR thẻ CCCD...</div>
+      <div style="background:#f8fafc; padding:8px; border-radius:4px; border:1px solid var(--border); margin-top: 10px;">
         <div class="form-row">
           <div class="col"><label>Phòng Chỉ Định *</label><select id="gTargetRoom"></select></div>
           <div class="col"><label>Mã NV</label><input type="text" id="gEmpId"></div>
@@ -485,87 +292,508 @@
         </div>
         <div class="form-row">
           <div class="col"><label>Số CCCD *</label><input type="text" id="gIdCard"></div>
-          <div class="col"><label>Ngày Sinh</label><input type="text" id="gDob" placeholder="dd/mm/yyyy" oninput="applyDateMask(this)"></div>
-        </div>
-        <div class="form-row">
           <div class="col"><label>Số ĐT</label><input type="text" id="gPhone"></div>
-          <div class="col"><label>Địa Chỉ</label><input type="text" id="gAddress"></div>
         </div>
-        <div class="form-row">
-          <div class="col"><label>📝 Ghi Chú</label><input type="text" id="gNote" placeholder="Ghi chú..."></div>
-        </div>
-        <button onclick="saveQuickScanWorker()" class="btn" style="width:100%; background:var(--green); color:white; justify-content:center; padding:11px; margin-top:8px; font-weight:bold; font-size:0.85rem;">
-          ✓ Xác Nhận Lưu Vào Phòng
-        </button>
+        <button onclick="saveQuickScanWorker()" class="btn" style="width:100%; background:var(--green); color:white; justify-content:center; padding:10px; margin-top:8px; font-weight:bold;">✓ Xác Nhận Lưu</button>
       </div>
-      <div style="height: 50px;"></div>
     </div>
   </div>
 
-  <!-- MODAL QUẢN TRỊ VIÊN -->
+  <!-- MODAL NHẬP EXCEL -->
+  <div class="modal" id="importModal">
+    <div class="modal-content" style="max-width: 480px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h3 style="font-size:0.95rem; color:var(--navy);">📥 NHẬP FILE EXCEL</h3>
+        <button onclick="closeModal('importModal')">✕ Đóng</button>
+      </div>
+      <p style="font-size:0.75rem; color:#64748b; margin-bottom:10px;">Hệ thống sẽ tự động xếp công nhân vào các phòng còn trống.</p>
+      <button onclick="document.getElementById('excelFileInput').click()" class="btn btn-import" style="width:100%; justify-content:center; padding:12px; font-size:0.9rem;">
+        📂 Chọn File Excel (.xlsx, .xls)
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL ADMIN -->
   <div class="modal" id="adminModal">
     <div class="modal-content">
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:6px;">
-        <h3 style="font-size:0.95rem; color:var(--red); display:flex; align-items:center; gap:5px;">
-          🛡️ TRANG QUẢN TRỊ VIÊN HỆ THỐNG
-        </h3>
-        <button onclick="closeModal('adminModal')" style="padding: 4px 8px; font-weight: bold;">✕ Đóng</button>
-      </div>
-      <div id="adminAbsenceAlertBox" style="margin-top:6px; display:none; background:#fee2e2; border:1px solid #ef4444; padding:6px; border-radius:4px;">
-        <div style="font-size:0.75rem; font-weight:bold; color:#b91c1c;">⚠ CẢNH BÁO CÔNG NHÂN VẮNG TỪ 3 NGÀY:</div>
-        <div id="adminAbsenceList" style="max-height:80px; overflow-y:auto; font-size:0.7rem; color:#7f1d1d; margin-top:2px;"></div>
+        <h3 style="font-size:0.95rem; color:var(--red);">🛡️ TRANG QUẢN TRỊ VIÊN HỆ THỐNG</h3>
+        <button onclick="closeModal('adminModal')">✕ Đóng</button>
       </div>
       <div class="admin-feature-grid">
-        <button class="btn" style="background:#0284c7; color:white; padding:8px; justify-content:center;" onclick="openSyncInterface()">🔄 Đồng Bộ Dữ Liệu</button>
-        <button class="btn" style="background:#0f766e; color:white; padding:8px; justify-content:center;" onclick="openDeviceAuthModal()">👥 Duyệt Cán Bộ</button>
-        <button class="btn" style="background:#16a34a; color:white; padding:8px; justify-content:center;" onclick="adminExportBackupExcel()">💾 Xuất Lưu Trữ (.xlsx)</button>
-        <button class="btn" style="background:#b45309; color:white; padding:8px; justify-content:center;" onclick="openRetiredHistoryModal()">📋 Hồ Sơ Nghỉ Việc</button>
-        <button class="btn" style="background:#7c3aed; color:white; padding:8px; justify-content:center;" onclick="openDamageReportSummary()">🛠️ Báo Hỏng / Vệ Sinh</button>
+        <button class="btn" style="background:#0284c7; color:white; padding:8px; justify-content:center;" onclick="initDatabaseListener()">🔄 Làm Mới Dữ Liệu</button>
+        <button class="btn" style="background:#16a34a; color:white; padding:8px; justify-content:center;" onclick="exportDataExcel()">💾 Xuất Excel Lưu Trữ</button>
         <button class="btn" style="background:#dc2626; color:white; padding:8px; justify-content:center;" onclick="adminClearAll()">🗑 Xóa Trắng Dữ Liệu</button>
       </div>
-      <div id="syncBox" style="display:none; background:#f8fafc; border:1px dashed #0284c7; padding:8px; border-radius:4px; margin-bottom:8px;">
-        <div style="font-size:0.75rem; font-weight:bold; margin-bottom:4px; color:#0369a1;">ĐỒNG BỘ NGOẠI TUYẾN / DỰ PHÒNG:</div>
-        <div style="display:flex; gap:6px;">
-          <button class="btn" style="background:#0284c7; color:white;" onclick="exportSyncFile()">1. Xuất file Đồng Bộ (.json)</button>
-          <input type="file" id="syncFileInput" accept=".json" style="display:none;" onchange="importSyncFile(event)">
-          <button class="btn" style="background:#0ea5e9; color:white;" onclick="document.getElementById('syncFileInput').click()">2. Nạp file Đồng Bộ</button>
-        </div>
-      </div>
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-        <span style="font-size:0.75rem; font-weight:bold;">Nhật ký thao tác (Audit Logs):</span>
-        <button onclick="exportAuditLogsExcel()" class="btn" style="background:#334155; color:white; padding:3px 8px; font-size:0.65rem;">📥 Xuất Nhật Ký (.xlsx)</button>
-      </div>
-      <div id="adminLogList" style="max-height:160px; overflow-y:auto; background:#f1f5f9; padding:6px; font-size:0.68rem; border:1px solid var(--border);"></div>
-      <div style="height: 40px;"></div>
     </div>
   </div>
 
-  <!-- MODAL DUYỆT CÁN BỘ & XÓA THIẾT BỊ -->
-  <div class="modal" id="deviceAuthModal">
-    <div class="modal-content" style="max-width: 600px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:5px; margin-bottom:8px;">
-        <h3 style="font-size:0.95rem; color:#0f766e; font-weight:bold;">👥 DANH SÁCH THIẾT BỊ & DUYỆT CÁN BỘ</h3>
-        <button onclick="closeModal('deviceAuthModal')" style="padding: 4px 8px; font-weight: bold;">✕ Đóng</button>
-      </div>
-      <p style="font-size:0.75rem; color:#64748b; margin-bottom:6px;">Quản lý phân quyền thiết bị di động truy cập trực tiếp từ Realtime Database.</p>
-      <div class="table-container">
-        <table class="data-table">
-          <thead>
-            <tr><th>Tên Cán Bộ</th><th>Mã Máy</th><th>Trạng Thái</th><th>Thao Tác</th></tr>
-          </thead>
-          <tbody id="deviceAuthBody"></tbody>
-        </table>
-      </div>
-      <div style="height: 40px;"></div>
-    </div>
-  </div>
+  <!-- SCRIPT LOGIC TOÀN BỘ HỆ THỐNG -->
+  <script>
+    // 1. Cấu hình Firebase Realtime Database
+    const firebaseConfig = {
+      apiKey: "AIzaSy...",
+      authDomain: "quan-ly-lan-trai.firebaseapp.com",
+      databaseURL: "https://quan-ly-lan-trai-default-rtdb.firebaseio.com",
+      projectId: "quan-ly-lan-trai",
+      storageBucket: "quan-ly-lan-trai.appspot.com",
+      messagingSenderId: "...",
+      appId: "..."
+    };
 
-  <!-- MODAL XEM HỒ SƠ NGHỈ VIỆC -->
-  <div class="modal" id="retiredModal">
-    <div class="modal-content" style="max-width: 550px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:5px; margin-bottom:8px;">
-        <h3 style="font-size:0.9rem; color:#b45309;">📋 DANH SÁCH CÔNG NHÂN ĐÃ NGHỈ VIỆC</h3>
-        <button onclick="closeModal('retiredModal')" style="padding: 4px 8px; font-weight: bold;">✕ Đóng</button>
-      </div>
-      <div class="table-container">
-        <table class="data-table">
+    let db = null;
+    try {
+      if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+      }
+    } catch(e) {
+      console.warn("Chế độ Local Storage (Chưa kết nối Firebase)", e);
+    }
+
+    // 2. Tạo 350 phòng (5 Khu, mỗi khu 5 dãy, mỗi dãy 14 phòng)
+    let roomsData = {};
+    let currentSelectedRoomId = null;
+    let cameraStream = null;
+
+    const KHU_CONFIG = [
+      { name: "Khu A", start: 1, end: 5 },
+      { name: "Khu B", start: 6, end: 10 },
+      { name: "Khu C", start: 11, end: 15 },
+      { name: "Khu D", start: 16, end: 20 },
+      { name: "Khu E", start: 21, end: 25 }
+    ];
+
+    function initDefaultRooms() {
+      roomsData = {};
+      KHU_CONFIG.forEach(k => {
+        for (let r = k.start; r <= k.end; r++) {
+          for (let p = 1; p <= 14; p++) {
+            const pCode = p < 10 ? '0' + p : p;
+            const rCode = r < 10 ? '0' + r : r;
+            const roomId = `P${rCode}.${pCode}`;
+            roomsData[roomId] = {
+              id: roomId,
+              khu: k.name,
+              day: `Dãy ${r}`,
+              workers: [],
+              isDirty: false,
+              note: ""
+            };
+          }
+        }
+      });
+    }
+
+    function saveLocal() {
+      try {
+        localStorage.setItem('langvan_rooms', JSON.stringify(roomsData));
+      } catch (e) {}
+    }
+
+    function loadLocal() {
+      const saved = localStorage.getItem('langvan_rooms');
+      if (saved) {
+        try { roomsData = JSON.parse(saved); return true; } catch(e) {}
+      }
+      return false;
+    }
+
+    // 3. Render giao diện 350 phòng
+    function renderRooms() {
+      const grid = document.getElementById("roomGrid");
+      const filterKhu = document.getElementById("selKhu").value;
+      const filterStatus = document.getElementById("selRoomStatusFilter").value;
+      grid.innerHTML = "";
+
+      Object.values(roomsData).forEach(room => {
+        if (filterKhu !== "ALL" && room.khu !== filterKhu) return;
+        const count = room.workers ? room.workers.length : 0;
+        
+        if (filterStatus === "DIRTY" && !room.isDirty) return;
+        if (filterStatus === "FULL" && count < 20) return;
+        if (filterStatus === "AVAILABLE" && count >= 20) return;
+
+        let statusClass = "status-white";
+        if (count >= 20) statusClass = "status-full";
+        else if (count > 0) statusClass = "status-occupied";
+
+        const card = document.createElement("div");
+        card.className = `room-card ${statusClass}`;
+        card.onclick = () => openRoomDetail(room.id);
+        card.innerHTML = `
+          <div class="room-title" style="font-weight:800; font-size:0.85rem;">${room.id}</div>
+          <div style="font-size:0.75rem; color:#64748b;">${room.day}</div>
+          <div style="margin-top:4px; font-weight:bold;">${count}/20 người</div>
+          ${room.isDirty ? '<div class="room-dirty-alert">🧹 Chưa dọn</div>' : ''}
+          ${room.note ? `<div class="room-custom-note" title="${room.note}">${room.note}</div>` : ''}
+        `;
+        grid.appendChild(card);
+      });
+
+      updateDashboard();
+    }
+
+    function updateDashboard() {
+      let total = 0;
+      let full = 0;
+      let dirty = 0;
+      let male = 0;
+      let female = 0;
+
+      Object.values(roomsData).forEach(r => {
+        const wList = r.workers || [];
+        total += wList.length;
+        if (wList.length >= 20) full++;
+        if (r.isDirty) dirty++;
+        wList.forEach(w => {
+          if (w.gender === "Nữ") female++; else male++;
+        });
+      });
+
+      document.getElementById("statTotal").innerText = `${total}/7000`;
+      document.getElementById("statOcc").innerText = `${((total / 7000) * 100).toFixed(1)}%`;
+      document.getElementById("statRoomStatus").innerHTML = `${350 - full}/<span style="color:var(--red); font-weight:bold;">${full}</span>`;
+      document.getElementById("statDirty").innerText = dirty;
+      document.getElementById("statGender").innerHTML = `${male}/<span style="color:var(--red); font-weight:bold;">${female}</span>`;
+    }
+
+    // 4. Modal và Thao tác Chi Tiết Phòng
+    function openRoomDetail(roomId) {
+      currentSelectedRoomId = roomId;
+      const room = roomsData[roomId];
+      document.getElementById("roomModalTitle").innerText = `Chi Tiết ${room.id} (${room.day} - ${room.khu})`;
+      document.getElementById("roomInputContainer").style.display = "none";
+      renderWorkersInRoom();
+      document.getElementById("roomModal").style.display = "flex";
+    }
+
+    function renderWorkersInRoom() {
+      const room = roomsData[currentSelectedRoomId];
+      const tbody = document.getElementById("roomWorkersBody");
+      tbody.innerHTML = "";
+
+      (room.workers || []).forEach((w, idx) => {
+        const tr = document.createElement("tr");
+        tr.className = w.gender === "Nữ" ? "female-row" : "";
+        tr.innerHTML = `
+          <td>${w.empId || '-'}</td>
+          <td><b>${w.name}</b></td>
+          <td>${w.gender || 'Nam'}</td>
+          <td>${w.idCard || '-'}</td>
+          <td>${w.phone || '-'}</td>
+          <td>
+            <button onclick="removeWorker(${idx})" style="background:#ef4444; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer;">Xóa</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function toggleWorkerForm() {
+      const box = document.getElementById("roomInputContainer");
+      box.style.display = box.style.display === "none" ? "block" : "none";
+    }
+
+    function addWorkerDirect() {
+      const name = document.getElementById("rName").value.trim();
+      const idCard = document.getElementById("rIdCard").value.trim();
+      if (!name) return alert("Vui lòng nhập Họ và Tên!");
+
+      const room = roomsData[currentSelectedRoomId];
+      if (!room.workers) room.workers = [];
+      if (room.workers.length >= 20) return alert("Phòng đã đủ 20 người!");
+
+      room.workers.push({
+        name: name,
+        idCard: idCard,
+        empId: document.getElementById("rEmpId").value.trim(),
+        gender: document.getElementById("rGender").value,
+        phone: document.getElementById("rPhone").value.trim()
+      });
+
+      // Clear input
+      document.getElementById("rName").value = "";
+      document.getElementById("rIdCard").value = "";
+      document.getElementById("rEmpId").value = "";
+      document.getElementById("rPhone").value = "";
+
+      saveLocal();
+      syncToFirebase(currentSelectedRoomId);
+      renderWorkersInRoom();
+      renderRooms();
+    }
+
+    function removeWorker(idx) {
+      if (!confirm("Bạn có chắc muốn xóa công nhân này khỏi phòng?")) return;
+      const room = roomsData[currentSelectedRoomId];
+      room.workers.splice(idx, 1);
+      saveLocal();
+      syncToFirebase(currentSelectedRoomId);
+      renderWorkersInRoom();
+      renderRooms();
+    }
+
+    function toggleCleanRoom() {
+      const room = roomsData[currentSelectedRoomId];
+      room.isDirty = !room.isDirty;
+      saveLocal();
+      syncToFirebase(currentSelectedRoomId);
+      renderRooms();
+    }
+
+    // 5. Quét CCCD Camera
+    function handleScanAuthClick() {
+      const select = document.getElementById("gTargetRoom");
+      select.innerHTML = "";
+      Object.keys(roomsData).forEach(rId => {
+        const opt = document.createElement("option");
+        opt.value = rId;
+        opt.innerText = `${rId} (${roomsData[rId].workers?.length || 0}/20)`;
+        select.appendChild(opt);
+      });
+
+      document.getElementById("globalScanModal").style.display = "flex";
+      startCamera();
+    }
+
+    function startCamera() {
+      const video = document.getElementById("camVideo");
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(stream => {
+          cameraStream = stream;
+          video.srcObject = stream;
+          requestAnimationFrame(scanQRCodeTick);
+        })
+        .catch(err => {
+          document.getElementById("camStatusMsg").innerText = "Không thể mở camera: " + err.message;
+        });
+    }
+
+    function scanQRCodeTick() {
+      const video = document.getElementById("camVideo");
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        const canvas = document.getElementById("qrCanvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+        if (code && code.data) {
+          parseQRData(code.data);
+          return;
+        }
+      }
+      if (document.getElementById("globalScanModal").style.display === "flex") {
+        requestAnimationFrame(scanQRCodeTick);
+      }
+    }
+
+    function parseQRData(raw) {
+      // Định dạng QR CCCD: Số CCCD|Số CMND cũ|Họ tên|Ngày sinh|Giới tính|Địa chỉ|Ngày cấp
+      const parts = raw.split("|");
+      if (parts.length >= 5) {
+        document.getElementById("gIdCard").value = parts[0] || "";
+        document.getElementById("gName").value = parts[2] || "";
+        document.getElementById("gGender").value = (parts[4] === "Nữ" ? "Nữ" : "Nam");
+        document.getElementById("camStatusMsg").innerText = "✓ Đã nhận diện: " + parts[2];
+      } else {
+        document.getElementById("camStatusMsg").innerText = "Nội dung QR: " + raw;
+      }
+    }
+
+    function saveQuickScanWorker() {
+      const targetRoom = document.getElementById("gTargetRoom").value;
+      const name = document.getElementById("gName").value.trim();
+      const idCard = document.getElementById("gIdCard").value.trim();
+      if (!name) return alert("Vui lòng quét hoặc nhập tên!");
+
+      const room = roomsData[targetRoom];
+      if (!room.workers) room.workers = [];
+      if (room.workers.length >= 20) return alert("Phòng đã đầy 20 người!");
+
+      room.workers.push({
+        name: name,
+        idCard: idCard,
+        empId: document.getElementById("gEmpId").value.trim(),
+        gender: document.getElementById("gGender").value,
+        phone: document.getElementById("gPhone").value.trim()
+      });
+
+      saveLocal();
+      syncToFirebase(targetRoom);
+      renderRooms();
+      closeGlobalScanner();
+      alert(`Đã thêm thành công vào ${targetRoom}`);
+    }
+
+    function closeGlobalScanner() {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
+      }
+      closeModal("globalScanModal");
+    }
+
+    // 6. Nhập / Xuất Excel
+    function handleImportAuthClick() {
+      document.getElementById("importModal").style.display = "flex";
+    }
+
+    function handleExcelUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet);
+
+        let curRoomIdx = 0;
+        const roomKeys = Object.keys(roomsData);
+
+        json.forEach(row => {
+          const name = row['Họ Tên'] || row['Họ và tên'] || row['Name'];
+          if (!name) return;
+
+          while (curRoomIdx < roomKeys.length && (roomsData[roomKeys[curRoomIdx]].workers?.length || 0) >= 20) {
+            curRoomIdx++;
+          }
+          if (curRoomIdx < roomKeys.length) {
+            const r = roomsData[roomKeys[curRoomIdx]];
+            if (!r.workers) r.workers = [];
+            r.workers.push({
+              name: name,
+              idCard: String(row['CCCD'] || row['CMND'] || ''),
+              gender: String(row['Giới Tính'] || row['Phái'] || 'Nam'),
+              empId: String(row['Mã NV'] || ''),
+              phone: String(row['SĐT'] || row['Điện thoại'] || '')
+            });
+          }
+        });
+
+        saveLocal();
+        syncAllToFirebase();
+        renderRooms();
+        closeModal('importModal');
+        alert("Nhập danh sách Excel thành công!");
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function exportDataExcel() {
+      const rows = [];
+      Object.values(roomsData).forEach(r => {
+        (r.workers || []).forEach(w => {
+          rows.push({
+            "Phòng": r.id,
+            "Dãy": r.day,
+            "Khu": r.khu,
+            "Mã NV": w.empId || "",
+            "Họ Tên": w.name || "",
+            "Giới Tính": w.gender || "Nam",
+            "Số CCCD": w.idCard || "",
+            "Số ĐT": w.phone || ""
+          });
+        });
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "DanhSachPhong");
+      XLSX.writeFile(wb, "Danh_Sach_Cong_Nhan_Lang_Van.xlsx");
+    }
+
+    // 7. Đồng bộ Firebase
+    function initDatabaseListener() {
+      const syncText = document.getElementById("syncIndicator");
+      if (!db) {
+        if (syncText) syncText.innerText = "🟢 Bản Ngoại Tuyến (Offline)";
+        return;
+      }
+      syncText.innerText = "🟡 Đang đồng bộ...";
+      db.ref("rooms").on("value", snapshot => {
+        const val = snapshot.val();
+        if (val) {
+          roomsData = val;
+          saveLocal();
+          renderRooms();
+        }
+        syncText.innerText = "🟢 Hoạt động (Trực tuyến)";
+      }, err => {
+        syncText.innerText = "🔴 Lỗi kết nối Firebase";
+        console.error(err);
+      });
+    }
+
+    function syncToFirebase(roomId) {
+      if (db) {
+        db.ref("rooms/" + roomId).set(roomsData[roomId]);
+      }
+    }
+
+    function syncAllToFirebase() {
+      if (db) {
+        db.ref("rooms").set(roomsData);
+      }
+    }
+
+    // 8. Các tiện ích khác
+    function handleSearch(val) {
+      val = val.toLowerCase().trim();
+      const cards = document.querySelectorAll(".room-card");
+      cards.forEach(card => {
+        card.style.display = card.innerText.toLowerCase().includes(val) ? "block" : "none";
+      });
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).style.display = "none";
+    }
+
+    function openAdminPanelClick() {
+      document.getElementById("adminModal").style.display = "flex";
+    }
+
+    function renameCurrentDevice() {
+      const newName = prompt("Nhập tên cán bộ quản lý:");
+      if (newName) {
+        document.getElementById("lblDeviceName").innerText = newName;
+        localStorage.setItem("langvan_cb_name", newName);
+      }
+    }
+
+    function adminClearAll() {
+      if (confirm("CẢNH BÁO: Thao tác này sẽ xóa sạch dữ liệu toàn bộ 350 phòng về ban đầu. Bạn có chắc không?")) {
+        initDefaultRooms();
+        saveLocal();
+        syncAllToFirebase();
+        renderRooms();
+        closeModal("adminModal");
+        alert("Đã thiết lập lại dữ liệu trắng!");
+      }
+    }
+
+    function toggleAudioNotify() {
+      alert("Đã bật nhận thông báo chuông!");
+    }
+
+    // 9. Khởi chạy ứng dụng
+    window.addEventListener("DOMContentLoaded", () => {
+      const savedName = localStorage.getItem("langvan_cb_name");
+      if (savedName) document.getElementById("lblDeviceName").innerText = savedName;
+
+      const hasLocal = loadLocal();
+      if (!hasLocal) {
+        initDefaultRooms();
+      }
+      renderRooms();
+      initDatabaseListener();
+    });
+  </script>
+</body>
+</html>
