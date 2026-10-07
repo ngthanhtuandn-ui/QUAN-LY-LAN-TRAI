@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Lán Trại Làng Vân - Quản Lý 7000 Công Nhân</title>
+  <title>Lán Trại Làng Vân - Quản Lý 7000 Công Nhân - Báo cáo hàng ngày</title>
   <meta name="theme-color" content="#1e3a8a">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -774,6 +774,9 @@
         let localLogs = await idbGet('logs');
         let localRetired = await idbGet('retiredList');
         let localDailyReports = await idbGet('dailyReports');
+        if (!localDailyReports) {
+          try { localDailyReports = JSON.parse(localStorage.getItem('LV_dailyReports') || '{}'); } catch(e) { localDailyReports = {}; }
+        }
         let localTs = await idbGet('lastSyncTimestamp');
 
         if (!localDb) {
@@ -1550,76 +1553,137 @@
     }
 
     // ==================== BẢNG ĐIỀU KHIỂN & ĐẾM QUÂN SỐ ====================
-    function updateDashboardStats() {
-      const rooms = Object.values(db);
+    // ==================== 7B. BÁO CÁO THỐNG KÊ HÀNG NGÀY ====================
+    // Báo cáo dùng CHÍNH CÁC CHỈ SỐ của Dashboard.
+    // Mỗi ngày có một snapshot riêng trong IndexedDB/localStorage.
+    function getDashboardSnapshot(dateISO = getLocalDateISO()) {
+      const rooms = Object.values(db || {});
       let total = 0, male = 0, female = 0, enteredToday = 0, dirtyCount = 0;
 
-      const today = getLocalDateISO();
-      const isToday = (value) => {
+      const isDateValue = (value, targetDate) => {
         if (!value) return false;
         const raw = String(value).trim().split(/[ T]/)[0];
+
         if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)) {
-          const [y, m, d] = raw.split('-');
-          return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}` === today;
+          const [y,m,d] = raw.split('-');
+          return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}` === targetDate;
         }
+
         const m = raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
         if (m) {
-          return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}` === today;
+          return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}` === targetDate;
         }
         return false;
       };
 
       rooms.forEach(r => {
         if ((r.damageReport || []).includes('Phòng bẩn / Chưa dọn')) dirtyCount++;
+
         const hasWorkers = Array.isArray(r.workers) && r.workers.length > 0;
-        const count = hasWorkers ? r.workers.length : (r._cachedCount || 0);
+        const count = hasWorkers ? r.workers.length : Number(r._cachedCount || 0);
         total += count;
 
         if (hasWorkers) {
           r.workers.forEach(w => {
             if (w.gender === 'Nữ') female++; else male++;
-            if (isToday(w.joinDate || w.entryDate)) enteredToday++;
+            if (isDateValue(w.joinDate || w.entryDate, dateISO)) enteredToday++;
           });
         }
       });
 
       const usableRooms = rooms.filter(r => !r.isLocked);
+
       const availableRooms = usableRooms.filter(r => {
-        const c = (r.workers && r.workers.length > 0) ? r.workers.length : (r._cachedCount || 0);
+        const c = Array.isArray(r.workers) && r.workers.length > 0
+          ? r.workers.length : Number(r._cachedCount || 0);
         return c < CAPACITY;
       }).length;
+
       const fullRooms = usableRooms.filter(r => {
-        const c = (r.workers && r.workers.length > 0) ? r.workers.length : (r._cachedCount || 0);
+        const c = Array.isArray(r.workers) && r.workers.length > 0
+          ? r.workers.length : Number(r._cachedCount || 0);
         return c >= CAPACITY;
       }).length;
 
-      const modifiedRooms = rooms.filter(r => r.isModified).length;
+      const modifiedRooms = rooms.filter(r => !!r.isModified).length;
 
       const retiredToday = (Array.isArray(retiredList) ? retiredList : []).filter(w =>
-        isToday(w.retireDate || w.leaveDate || w.ngayNghi || w.retiredDate || w.date || w.ngayRa || w.checkOutDate)
+        isDateValue(
+          w.retireDate || w.leaveDate || w.ngayNghi || w.retiredDate ||
+          w.date || w.ngayRa || w.checkOutDate,
+          dateISO
+        )
       ).length;
 
-      const occupancy = rooms.length ? Math.round((total / (rooms.length * CAPACITY)) * 100) : 0;
+      const capacity = rooms.length * CAPACITY;
+      const occupancy = capacity ? Math.round((total / capacity) * 100) : 0;
       const diffToday = enteredToday - retiredToday;
+
+      return {
+        date: dateISO,
+        occupancy: Math.min(100, occupancy),
+        total,
+        capacity,
+        enteredToday,
+        retiredToday,
+        diffToday,
+        male,
+        female,
+        availableRooms,
+        fullRooms,
+        dirtyRooms: dirtyCount,
+        modifiedRooms,
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    function saveDailyReportSnapshot(date, report) {
+      if (!date || !report) return;
+
+      const old = dailyReports[date] || {};
+      dailyReports[date] = Object.assign({}, old, report, { date });
+
+      // Ghi ngay cả localStorage và IndexedDB.
+      // Không chờ debounce, tránh trường hợp người dùng bấm Xuất Excel ngay sau khi cập nhật.
+      try {
+        localStorage.setItem('LV_dailyReports', JSON.stringify(dailyReports));
+      } catch (e) {}
+
+      try {
+        return idbSet('dailyReports', dailyReports);
+      } catch (e) {
+        return Promise.resolve();
+      }
+    }
+
+    async function saveCurrentDashboardReport() {
+      const today = getLocalDateISO();
+      const report = getDashboardSnapshot(today);
+      await saveDailyReportSnapshot(today, report);
+      return report;
+    }
+
+    function updateDashboardStats() {
+      const report = getDashboardSnapshot(getLocalDateISO());
 
       const setText = (id, val) => {
         const el = document.getElementById(id);
         if (el) el.textContent = val;
       };
 
-      setText('statOcc', `${Math.min(100, occupancy)}%`);
-      setText('statTotal', `${total}/${rooms.length * CAPACITY}`);
-      setText('statToday', enteredToday > 0 ? `+${enteredToday}` : enteredToday);
-      setText('statRetiredToday', retiredToday > 0 ? `-${retiredToday}` : retiredToday);
-      setText('statDirty', dirtyCount);
+      setText('statOcc', `${report.occupancy}%`);
+      setText('statTotal', `${report.total}/${report.capacity}`);
+      setText('statToday', report.enteredToday > 0 ? `+${report.enteredToday}` : report.enteredToday);
+      setText('statRetiredToday', report.retiredToday > 0 ? `-${report.retiredToday}` : report.retiredToday);
+      setText('statDirty', report.dirtyRooms);
 
       const diffEl = document.getElementById('statDiffToday');
       if (diffEl) {
-        if (diffToday > 0) {
-          diffEl.textContent = `+${diffToday}`;
+        if (report.diffToday > 0) {
+          diffEl.textContent = `+${report.diffToday}`;
           diffEl.style.color = "var(--green)";
-        } else if (diffToday < 0) {
-          diffEl.textContent = `${diffToday}`;
+        } else if (report.diffToday < 0) {
+          diffEl.textContent = `${report.diffToday}`;
           diffEl.style.color = "var(--red)";
         } else {
           diffEl.textContent = "0";
@@ -1628,97 +1692,122 @@
       }
 
       const genderEl = document.getElementById('statGender');
-      if (genderEl) genderEl.innerHTML = `${male}/<span style="color:var(--red);font-weight:bold;">${female}</span>`;
+      if (genderEl) {
+        genderEl.innerHTML =
+          `${report.male}/<span style="color:var(--red);font-weight:bold;">${report.female}</span>`;
+      }
 
       const roomStatusEl = document.getElementById('statRoomStatus');
-      if (roomStatusEl) roomStatusEl.innerHTML = `${availableRooms}/<span style="color:var(--red);font-weight:bold;">${fullRooms}</span>`;
+      if (roomStatusEl) {
+        roomStatusEl.innerHTML =
+          `${report.availableRooms}/<span style="color:var(--red);font-weight:bold;">${report.fullRooms}</span>`;
+      }
 
-      setText('statMod', modifiedRooms);
+      setText('statMod', report.modifiedRooms);
 
-      // Lưu snapshot của Dashboard theo ngày để báo cáo lịch sử không bị thay đổi
-      // khi dữ liệu hiện tại được cập nhật vào các ngày sau.
-      saveDailyReportSnapshot(today, {
-        date: today,
-        occupancy: Math.min(100, occupancy),
-        total: total,
-        capacity: rooms.length * CAPACITY,
-        enteredToday: enteredToday,
-        retiredToday: retiredToday,
-        diffToday: diffToday,
-        male: male,
-        female: female,
-        availableRooms: availableRooms,
-        fullRooms: fullRooms,
-        dirtyRooms: dirtyCount,
-        modifiedRooms: modifiedRooms,
-        updatedAt: new Date().toISOString()
-      });
-    }
-
-    function saveDailyReportSnapshot(date, report) {
-      if (!date || !report) return;
-      const old = dailyReports[date] || {};
-      // Trong ngày chỉ cập nhật số liệu mới nhất; các ngày trước vẫn được giữ nguyên.
-      dailyReports[date] = Object.assign({}, old, report, { date });
-      try {
-        idbSet('dailyReports', dailyReports);
-      } catch (e) {}
+      // Snapshot trong ngày; ngày cũ không bị xóa.
+      saveDailyReportSnapshot(report.date, report);
     }
 
     function getDailyReportRows() {
-      const rows = Object.keys(dailyReports || {}).sort().reverse().map(date => {
-        const r = dailyReports[date] || {};
-        return {
-          'Ngày': date,
-          'Hiệu suất': `${Number(r.occupancy || 0)}%`,
-          'Tổng quân số': Number(r.total || 0),
-          'Sức chứa': Number(r.capacity || TOTAL_ROWS * ROOMS_PER_ROW * CAPACITY),
-          'Vào hôm nay': Number(r.enteredToday || 0),
-          'Nghỉ trong ngày': Number(r.retiredToday || 0),
-          'Biến động hôm nay': Number(r.diffToday || 0),
-          'Nam': Number(r.male || 0),
-          'Nữ': Number(r.female || 0),
-          'Phòng còn chỗ': Number(r.availableRooms || 0),
-          'Phòng đầy (Đỏ)': Number(r.fullRooms || 0),
-          'Cần dọn dẹp': Number(r.dirtyRooms || 0),
-          'Biến động phòng': Number(r.modifiedRooms || 0)
-        };
-      });
-      return rows;
+      const source = (dailyReports && typeof dailyReports === 'object') ? dailyReports : {};
+      return Object.keys(source)
+        .sort((a,b) => b.localeCompare(a))
+        .map(date => {
+          const r = source[date] || {};
+          return {
+            'Ngày': date,
+            'Hiệu suất': `${Number(r.occupancy || 0)}%`,
+            'Tổng quân số': Number(r.total || 0),
+            'Sức chứa': Number(r.capacity || 0),
+            'Vào hôm nay': Number(r.enteredToday || 0),
+            'Nghỉ trong ngày': Number(r.retiredToday || 0),
+            'Biến động hôm nay': Number(r.diffToday || 0),
+            'Nam': Number(r.male || 0),
+            'Nữ': Number(r.female || 0),
+            'Phòng còn chỗ': Number(r.availableRooms || 0),
+            'Phòng đầy (Đỏ)': Number(r.fullRooms || 0),
+            'Cần dọn dẹp': Number(r.dirtyRooms || 0),
+            'Biến động phòng': Number(r.modifiedRooms || 0)
+          };
+        });
     }
 
     function buildDailyReportSheet(wb) {
+      // Luôn đảm bảo có ít nhất báo cáo của ngày hiện tại.
+      const today = getLocalDateISO();
+      if (!dailyReports[today]) {
+        const report = getDashboardSnapshot(today);
+        dailyReports[today] = report;
+        try { localStorage.setItem('LV_dailyReports', JSON.stringify(dailyReports)); } catch(e) {}
+      }
+
       const rows = getDailyReportRows();
       const ws = XLSX.utils.aoa_to_sheet([]);
 
-      // Tiêu đề báo cáo
+      // 1. Tiêu đề chính
       XLSX.utils.sheet_add_aoa(ws, [['BÁO CÁO THỐNG KÊ']], { origin: 'A1' });
-      XLSX.utils.sheet_add_aoa(ws, [['🔎 Tìm kiếm theo ngày', 'Nhập ngày dạng YYYY-MM-DD để lọc dữ liệu']], { origin: 'A3' });
-      XLSX.utils.sheet_add_aoa(ws, [['Báo cáo lưu trữ tất cả các ngày - nội dung đồng bộ theo Dashboard']], { origin: 'A4' });
 
-      const headers = ['Ngày','Hiệu suất','Tổng quân số','Sức chứa','Vào hôm nay','Nghỉ trong ngày','Biến động hôm nay','Nam','Nữ','Phòng còn chỗ','Phòng đầy (Đỏ)','Cần dọn dẹp','Biến động phòng'];
+      // 2. Khu vực tìm kiếm/lọc ngày
+      XLSX.utils.sheet_add_aoa(ws, [[
+        '🔎 Tìm kiếm theo ngày',
+        'Dùng bộ lọc ▼ ở dòng tiêu đề để chọn ngày cần xem/in'
+      ]], { origin: 'A3' });
+
+      XLSX.utils.sheet_add_aoa(ws, [[
+        'Ngày cập nhật cuối',
+        today,
+        'Nguồn số liệu',
+        'Dashboard Lán trại Làng Vân'
+      ]], { origin: 'A4' });
+
+      const headers = [
+        'Ngày','Hiệu suất','Tổng quân số','Sức chứa','Vào hôm nay',
+        'Nghỉ trong ngày','Biến động hôm nay','Nam','Nữ',
+        'Phòng còn chỗ','Phòng đầy (Đỏ)','Cần dọn dẹp','Biến động phòng'
+      ];
+
       XLSX.utils.sheet_add_aoa(ws, [headers], { origin: 'A6' });
+
       if (rows.length) {
         XLSX.utils.sheet_add_json(ws, rows, { origin: 'A7', skipHeader: true });
       } else {
-        XLSX.utils.sheet_add_aoa(ws, [['Chưa có dữ liệu báo cáo. Báo cáo sẽ được tích lũy từ thời điểm chức năng được kích hoạt.']], { origin: 'A7' });
+        XLSX.utils.sheet_add_aoa(ws, [[
+          today,'0%',0,0,0,0,0,0,0,0,0,0,0
+        ]], { origin: 'A7' });
       }
 
-      ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:12} }];
-      ws['!cols'] = [
-        {wch:14},{wch:12},{wch:14},{wch:12},{wch:14},{wch:16},{wch:18},
-        {wch:9},{wch:9},{wch:16},{wch:17},{wch:15},{wch:17}
+      ws['!merges'] = [
+        { s:{r:0,c:0}, e:{r:0,c:12} }
       ];
-      if (rows.length) ws['!autofilter'] = { ref: `A6:M${6 + rows.length}` };
+
+      ws['!cols'] = [
+        {wch:14},{wch:12},{wch:15},{wch:12},{wch:15},
+        {wch:17},{wch:20},{wch:10},{wch:10},{wch:17},
+        {wch:18},{wch:16},{wch:18}
+      ];
+
+      ws['!autofilter'] = {
+        ref: `A6:M${Math.max(7, 6 + rows.length)}`
+      };
+
       ws['!freeze'] = { xSplit: 0, ySplit: 6 };
 
-      // Định dạng cơ bản tương thích với SheetJS Community: số thứ tự/cột rộng/merge/filter.
-      if (ws.A1) ws.A1.s = { font: { bold: true, sz: 15 }, alignment: { horizontal: 'center' } };
+      // Định dạng cơ bản; file vẫn tương thích Excel/SheetJS CE.
+      if (ws.A1) {
+        ws.A1.s = {
+          font: { bold: true, sz: 15 },
+          alignment: { horizontal: 'center', vertical: 'center' }
+        };
+      }
+
       if (ws.A3) ws.A3.s = { font: { bold: true } };
-      for (let c=0;c<headers.length;c++) {
+
+      for (let c = 0; c < headers.length; c++) {
         const cell = ws[XLSX.utils.encode_cell({r:5,c})];
         if (cell) cell.s = { font: { bold: true } };
       }
+
       XLSX.utils.book_append_sheet(wb, ws, 'Báo cáo hàng ngày');
     }
 
@@ -1795,34 +1884,73 @@
       XLSX.utils.book_append_sheet(wb, ws, 'Nhật ký quản trị');
     }
 
-    function downloadWorkbook(wb, filename) {
-      XLSX.writeFile(wb, filename, { bookType: 'xlsx', compression: true });
+    async function downloadWorkbook(wb, filename) {
+      if (typeof XLSX === 'undefined' || !XLSX.utils || !XLSX.writeFile) {
+        alert('Không tải được thư viện Excel. Vui lòng tải lại trang rồi thử lại.');
+        return false;
+      }
+      XLSX.writeFile(wb, filename, {
+        bookType: 'xlsx',
+        compression: true,
+        cellStyles: true
+      });
+      return true;
     }
 
-    function exportDataExcel() {
-      updateDashboardStats();
-      const wb = XLSX.utils.book_new();
-      buildDailyReportSheet(wb);
-      buildWorkerSheet(wb);
-      buildRoomSheet(wb);
-      buildRetiredSheet(wb);
-      buildDamageSheet(wb);
-      downloadWorkbook(wb, `LangVan_XuatExcel_${getLocalDateISO()}.xlsx`);
-      recordLog('Xuất Excel', 'Xuất dữ liệu và báo cáo hàng ngày');
+    async function exportDataExcel() {
+      try {
+        // Chốt snapshot trước khi tạo workbook.
+        await saveCurrentDashboardReport();
+
+        const wb = XLSX.utils.book_new();
+
+        // BẮT BUỘC: Báo cáo hàng ngày là sheet đầu tiên.
+        buildDailyReportSheet(wb);
+        buildWorkerSheet(wb);
+        buildRoomSheet(wb);
+        buildRetiredSheet(wb);
+        buildDamageSheet(wb);
+
+        const filename = `LangVan_BaoCaoHangNgay_${getLocalDateISO()}.xlsx`;
+        const ok = await downloadWorkbook(wb, filename);
+
+        if (ok) {
+          recordLog('Xuất Excel', 'Xuất dữ liệu + BÁO CÁO HÀNG NGÀY');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Lỗi xuất Excel: ' + (err && err.message ? err.message : err));
+      }
     }
 
-    function adminExportBackupExcel() {
-      updateDashboardStats();
-      const wb = XLSX.utils.book_new();
-      // Báo cáo hàng ngày luôn đứng đầu file lưu trữ quản trị.
-      buildDailyReportSheet(wb);
-      buildWorkerSheet(wb);
-      buildRoomSheet(wb);
-      buildRetiredSheet(wb);
-      buildDamageSheet(wb);
-      buildAuditSheet(wb);
-      downloadWorkbook(wb, `LangVan_LuuTru_QuanTri_${getLocalDateISO()}.xlsx`);
-      recordLog('Xuất lưu trữ quản trị', 'Xuất toàn bộ dữ liệu kèm báo cáo hàng ngày');
+    async function adminExportBackupExcel() {
+      try {
+        // Chốt snapshot trước khi tạo file lưu trữ.
+        await saveCurrentDashboardReport();
+
+        const wb = XLSX.utils.book_new();
+
+        // BẮT BUỘC: báo cáo hàng ngày nằm ở vị trí đầu tiên.
+        buildDailyReportSheet(wb);
+        buildWorkerSheet(wb);
+        buildRoomSheet(wb);
+        buildRetiredSheet(wb);
+        buildDamageSheet(wb);
+        buildAuditSheet(wb);
+
+        const filename = `LangVan_LuuTru_QuanTri_BaoCaoNgay_${getLocalDateISO()}.xlsx`;
+        const ok = await downloadWorkbook(wb, filename);
+
+        if (ok) {
+          recordLog(
+            'Xuất lưu trữ quản trị',
+            'Xuất toàn bộ dữ liệu + BÁO CÁO HÀNG NGÀY + NHẬT KÝ'
+          );
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Lỗi xuất lưu trữ quản trị: ' + (err && err.message ? err.message : err));
+      }
     }
 
     function exportAuditLogsExcel() {
@@ -2508,7 +2636,7 @@
     }
 
     function exportSyncFile() {
-      const syncData = JSON.stringify({ db, logs, retiredList, timestamp: new Date().toISOString() });
+      const syncData = JSON.stringify({ db, logs, retiredList, dailyReports, timestamp: new Date().toISOString() });
       const blob = new Blob([syncData], { type: "application/json" });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -2527,6 +2655,8 @@
             db = imported.db;
             logs = imported.logs || [];
             retiredList = imported.retiredList || [];
+            dailyReports = (imported.dailyReports && typeof imported.dailyReports === 'object') ? imported.dailyReports : {};
+            try { localStorage.setItem('LV_dailyReports', JSON.stringify(dailyReports)); } catch(e) {}
             normalizeDatabase();
             persistLocalState();
             renderRooms();
