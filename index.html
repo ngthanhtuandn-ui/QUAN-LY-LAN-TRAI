@@ -3021,7 +3021,7 @@
       }
 
       // 3. BÁO CÁO THỐNG KÊ THEO NGÀY — dữ liệu bám theo Dashboard
-      const report = wb.addWorksheet('BaoCaoNgay');
+      const report = wb.addWorksheet('BaoCaoHangNgay');
       report.views = [{ state: 'frozen', ySplit: 5 }];
       report.mergeCells('A1:L1');
       report.getCell('A1').value = 'BÁO CÁO THỐNG KÊ';
@@ -3030,20 +3030,22 @@
       report.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
       report.getRow(1).height = 26;
       report.mergeCells('A2:L2');
-      report.getCell('A2').value = 'Lán trại Làng Vân — Tổng hợp đúng các chỉ số trên thanh Dashboard';
+      report.getCell('A2').value = 'Lán trại Làng Vân — Báo cáo hàng ngày theo đúng các chỉ số trên thanh Dashboard';
       report.getCell('A2').font = { italic: true, color: { argb: 'FF64748B' } };
       report.getCell('A2').alignment = { horizontal: 'center' };
 
       report.getCell('A3').value = '🔎 Ngày tìm kiếm';
       report.getCell('A3').font = { bold: true, color: { argb: 'FF1E3A8A' } };
       report.getCell('B3').value = '';
+      report.getCell('B3').numFmt = '@';
       report.getCell('B3').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } };
       report.getCell('B3').border = { top:{style:'thin',color:{argb:'FFD97706'}}, left:{style:'thin',color:{argb:'FFD97706'}}, bottom:{style:'thin',color:{argb:'FFD97706'}}, right:{style:'thin',color:{argb:'FFD97706'}} };
       report.getCell('B3').note = 'Nhập 8 số, ví dụ 06102026. Ô C3 sẽ chuẩn hóa thành 06/10/2026. Bấm biểu tượng 🔎 để nhảy tới ngày cần tìm.';
       report.getCell('C3').value = { formula: `=IF(B3="","",IF(ISNUMBER(B3),IF(B3>100000,IFERROR(DATE(VALUE(RIGHT(TEXT(B3,"00000000"),4)),VALUE(MID(TEXT(B3,"00000000"),3,2)),VALUE(LEFT(TEXT(B3,"00000000"),2))),""),B3),IFERROR(DATE(VALUE(RIGHT(B3,4)),VALUE(MID(B3,3,2)),VALUE(LEFT(B3,2))),"")))` };
       report.getCell('C3').numFmt = 'dd/mm/yyyy';
       report.getCell('C3').font = { bold: true, color: { argb: 'FF0F766E' } };
-      report.getCell('D3').value = { formula: `=IF(C3="","",IFERROR(HYPERLINK("#'BaoCaoNgay'!A"&(MATCH(C3,$A$6:$A$${Math.max(6, Object.keys(buildAllDailyReports()).length + 5)},0)+5),"🔎 ĐI TỚI NGÀY"),"Không tìm thấy"))` };
+      report.getCell('C3').note = 'Ngày chuẩn hóa tự động: nhập 06102026 tại B3 → hiển thị 06/10/2026 tại C3.';
+      report.getCell('D3').value = { formula: `=IF(C3="","",IFERROR(HYPERLINK("#'BaoCaoHangNgay'!A"&(MATCH(C3,$A$6:$A$${Math.max(6, Object.keys(buildAllDailyReports()).length + 5)},0)+5),"🔎 ĐI TỚI NGÀY"),"Không tìm thấy"))` };
       report.getCell('D3').font = { bold: true, color: { argb: 'FF2563EB' }, underline: 'single' };
 
       const reportHeaders = ['Ngày','Hiệu Suất','Tổng Quân Số','Vào Hôm Nay','Nghỉ Trong Ngày','Biến Động Hôm Nay','Nam / Nữ','Trống / Đầy (Đỏ)','Cần Dọn Dẹp','Biến Động Phòng','Sức Chứa','Ghi Chú'];
@@ -3099,10 +3101,11 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `LangVan_DanhSach_${new Date().toISOString().slice(0,10)}.xlsx`;
+      a.download = `LangVan_DanhSach_${new Date().toISOString().slice(0,10)}_BaoCaoHangNgay.xlsx`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      recordLog('Xuất Excel', 'Xuất danh sách + danh sách nghỉ việc + báo cáo thống kê tất cả ngày');
+      alert('Đã xuất Excel thành công: CongNhan + DanhSachNghiViec + BaoCaoHangNgay.');
+      recordLog('Xuất Excel', 'Xuất danh sách + danh sách nghỉ việc + BaoCaoHangNgay lưu toàn bộ lịch sử và tra cứu theo ngày');
     }
 
     function exportAuditLogsExcel() {
