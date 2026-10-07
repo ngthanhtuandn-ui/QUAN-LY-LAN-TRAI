@@ -247,8 +247,8 @@
       <button class="btn-rename-device" onclick="renameCurrentDevice()">✏️ Đổi Tên</button>
     </div>
     <div>
-      <span>Quyền: <b id="lblUserRole" style="color:#d97706;">Đang kiểm tra...</b></span>
-      <span id="lblRoleHelp" style="color:#64748b; margin-left:4px;">(Chỉ xem - Liên hệ Admin duyệt)</span>
+      <span>Quyền: <b id="lblUserRole" style="color:#16a34a;">Cán Bộ (Toàn quyền)</b></span>
+      <span id="lblRoleHelp" style="color:#64748b; margin-left:4px;">(Toàn quyền vận hành)</span>
     </div>
   </div>
 
@@ -701,7 +701,7 @@
 
     let currentDeviceId = "";
     let currentDeviceName = "";
-    let currentUserRole = "staff"; // Mặc định cấp quyền cán bộ để vận hành trực tiếp mượt mà
+    let currentUserRole = "staff"; // Mặc định cho phép thao tác offline
     let approvedDevices = {};
 
     let longPressTimer = null;
@@ -1038,18 +1038,10 @@
     }
 
     function handleScanAuthClick() {
-      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') {
-        alert(`THIẾT BỊ CHƯA ĐƯỢC DUYỆT!\nBạn chỉ có quyền xem. Vui lòng liên hệ Quản trị viên duyệt cán bộ [${currentDeviceName}]`);
-        return;
-      }
       openGlobalScanner();
     }
 
     function handleImportAuthClick() {
-      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') {
-        alert("THIẾT BỊ CHƯA ĐƯỢC DUYỆT!\nBạn chỉ có quyền xem. Vui lòng liên hệ Quản trị viên cấp quyền nạp Excel.");
-        return;
-      }
       openImportModal();
     }
 
@@ -2117,4 +2109,271 @@
               gender: normalizeGender(mapped['gioitinh'] || ''),
               dob: normalizeDateString(mapped['ngaysinh'] || mapped['namsinh'] || mapped['dob'] || ''),
               phone: String(mapped['sdt'] || mapped['phone'] || mapped['sodienthoai'] || '').trim(),
-              address: String(mapped['diachi'] || mapped['quequan'] || mapped['address'] || '').
+              address: String(mapped['diachi'] || mapped['quequan'] || mapped['address'] || '').trim(),
+              note: String(mapped['ghichu'] || mapped['note'] || '').trim(),
+              attendanceHistory: {},
+              joinDate: normalizeDateString(mapped['ngayvao'] || mapped['ngaynhanviec'] || '') || today,
+              leaveDate: normalizeDateString(mapped['ngaynghi'] || mapped['ngaynghiviec'] || ''),
+              updatedAt: Date.now()
+            };
+            targetRoom.workers.push(newWorker);
+            targetRoom.isModified = true;
+            syncSingleRoom(targetRoom.id);
+            count++;
+          }
+        }
+      });
+
+      recordLog("Nhập Excel", `Tiếp nhận ${count} công nhân`);
+      persistLocalState();
+      renderRooms();
+      alert(`ĐÃ NẠP THÀNH CÔNG: Đã tiếp nhận ${count} công nhân!`);
+    }
+
+    // ==================== 11. CAMERA QUÉT MÃ QR ====================
+    function openGlobalScanner() {
+      populateTargetRoomSelects();
+      openModal('globalScanModal');
+      startDirectCamera();
+    }
+
+    async function startDirectCamera() {
+      const video = document.getElementById('camVideo'), msg = document.getElementById('camStatusMsg');
+      if (!video || !msg) return;
+      closeCameraStream();
+      msg.innerText = "Đang kích hoạt camera...";
+
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: currentCameraFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        video.srcObject = localStream;
+        await video.play();
+        isScanning = true;
+        msg.innerText = "Đặt mã QR vào ô vuông xanh";
+        scanVideoFrame();
+      } catch (e) {
+        msg.innerText = "Không mở được camera. Dùng 'Tải Ảnh CCCD'.";
+      }
+    }
+
+    function scanVideoFrame() {
+      if (!isScanning) return;
+      const video = document.getElementById('camVideo'), canvas = document.getElementById('qrCanvas');
+      if (!video || !canvas || scanTimer) return;
+
+      scanTimer = setTimeout(() => {
+        scanTimer = null;
+        if (!isScanning) return;
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0) {
+          const vW = video.videoWidth, vH = video.videoHeight;
+          const boxSize = Math.round(Math.min(vW, vH) * 0.65);
+          canvas.width = boxSize;
+          canvas.height = boxSize;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(video, (vW - boxSize)/2, (vH - boxSize)/2, boxSize, boxSize, 0, 0, boxSize, boxSize);
+
+          try {
+            const imageData = ctx.getImageData(0, 0, boxSize, boxSize);
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            if (code?.data) {
+              isScanning = false;
+              parseCccdData(code.data);
+              return;
+            }
+          } catch (e) {}
+        }
+        scanVideoFrame();
+      }, 100);
+    }
+
+    function toggleCameraFacing() {
+      closeCameraStream();
+      currentCameraFacing = currentCameraFacing === "environment" ? "user" : "environment";
+      startDirectCamera();
+    }
+
+    function closeCameraStream() {
+      isScanning = false;
+      if (scanTimer) clearTimeout(scanTimer);
+      if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+        localStream = null;
+      }
+    }
+
+    function closeGlobalScanner() {
+      closeCameraStream();
+      closeModal('globalScanModal');
+    }
+
+    function parseCccdData(rawText) {
+      const parts = String(rawText || '').replace(/^\uFEFF/, '').trim().split('|');
+      if (parts.length < 5) return alert("Không nhận diện được định dạng CCCD.");
+      const cardNo = normalizeIdCard(parts[0]);
+      document.getElementById('gIdCard').value = cardNo;
+      document.getElementById('gName').value = parts[2] || parts[1] || '';
+      document.getElementById('gDob').value = normalizeDateString(parts[3] || parts[2] || '');
+      document.getElementById('gGender').value = /nu|nữ/i.test(parts[4] || '') ? 'Nữ' : 'Nam';
+      document.getElementById('gAddress').value = parts[5] || parts[4] || '';
+      alert("Đã nhận diện: " + (parts[2] || parts[1]));
+    }
+
+    function handleFileCCCDQuick(input) {
+      if (!input.files || !input.files.length) return;
+      const file = input.files[0];
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.getElementById('qrCanvas');
+          canvas.width = img.width; canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const imgData = ctx.getImageData(0, 0, img.width, img.height);
+          const code = jsQR(imgData.data, imgData.width, imgData.height);
+          if (code && code.data) parseCccdData(code.data);
+          else alert("Không tìm thấy mã QR trên tệp ảnh.");
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+      input.value = "";
+    }
+
+    async function saveQuickScanWorker() {
+      const rid = document.getElementById('gTargetRoom').value;
+      if (!rid || !db[rid]) return alert("Chưa chọn phòng!");
+      const name = document.getElementById('gName').value.trim();
+      const idCard = normalizeIdCard(document.getElementById('gIdCard').value);
+      if (!name || !idCard) return alert("Thiếu Tên hoặc CCCD!");
+      if (isIdCardDuplicate(idCard)) return alert("Số CCCD này đã tồn tại!");
+
+      const newWorker = {
+        empId: document.getElementById('gEmpId').value.trim(),
+        name, idCard,
+        gender: document.getElementById('gGender').value,
+        dob: document.getElementById('gDob').value.trim(),
+        phone: document.getElementById('gPhone').value.trim(),
+        address: document.getElementById('gAddress').value.trim(),
+        note: document.getElementById('gNote').value.trim(),
+        attendanceHistory: {},
+        joinDate: getTodayVN(),
+        leaveDate: '',
+        updatedAt: Date.now()
+      };
+
+      const room = db[rid];
+      if (room.workers.length >= CAPACITY) return alert("Phòng đã đầy!");
+      room.workers.push(newWorker);
+      room.isModified = true;
+      syncSingleRoom(rid);
+      
+      recordLog("Thêm nhanh", `Thêm ${name} vào ${rid}`);
+      persistLocalState();
+      renderRooms();
+      closeGlobalScanner();
+      alert(`Đã xếp ${name} vào phòng ${rid}!`);
+    }
+
+    // ==================== 12. QUẢN TRỊ & TIỆN ÍCH DỮ LIỆU ====================
+    function checkAbsenceAlerts() {
+      const alertBox = document.getElementById('adminAbsenceAlertBox');
+      const list = document.getElementById('adminAbsenceList');
+      const warned = [];
+      Object.values(db).forEach(r => {
+        (r.workers || []).forEach(w => {
+          let count = Object.values(w.attendanceHistory || {}).filter(v => v === false).length;
+          if (count >= 3) warned.push({ name: w.name, empId: w.empId, room: r.id, count });
+        });
+      });
+      if (warned.length > 0) {
+        alertBox.style.display = 'block';
+        list.innerHTML = warned.map(w => `<div>• <b>${escapeHtml(w.name)}</b> (${escapeHtml(w.empId || '-')}) - Phòng <b>${escapeHtml(w.room)}</b>: <span style="color:red; font-weight:bold;">Vắng ${w.count} ngày</span></div>`).join('');
+      } else {
+        alertBox.style.display = 'none';
+      }
+    }
+
+    function adminViewLogs() {
+      const container = document.getElementById('adminLogList');
+      container.innerHTML = logs.length === 0 ? "Chưa có lưu vết nào." : logs.map(l =>
+        `<div>[${escapeHtml(l.time)}] <b>${escapeHtml(l.user)}</b>: ${escapeHtml(l.action)} <i>(${escapeHtml(l.detail)})</i></div>`
+      ).join('');
+    }
+
+    function openSyncInterface() {
+      const syncBox = document.getElementById('syncBox');
+      syncBox.style.display = syncBox.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function exportSyncFile() {
+      const syncData = JSON.stringify({ db, logs, retiredList, timestamp: new Date().toISOString() });
+      const blob = new Blob([syncData], { type: "application/json" });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `DongBo_LangVan_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+    }
+
+    function importSyncFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          const imported = JSON.parse(evt.target.result);
+          if (imported.db) {
+            db = imported.db;
+            logs = imported.logs || [];
+            retiredList = imported.retiredList || [];
+            normalizeDatabase();
+            persistLocalState();
+            renderRooms();
+            alert("Đã nạp file đồng bộ thành công!");
+            closeModal('adminModal');
+          }
+        } catch(err) { alert("Lỗi: " + err.message); }
+      };
+      reader.readAsText(file);
+    }
+
+    function openRetiredHistoryModal() {
+      const tbody = document.getElementById('retiredWorkersBody');
+      tbody.innerHTML = retiredList.length === 0 ? `<tr><td colspan="6" style="text-align:center; color:#64748b;">Chưa có hồ sơ nghỉ việc.</td></tr>` :
+        retiredList.map(w => `<tr><td>${escapeHtml(w.empId || '-')}</td><td>${escapeHtml(w.name)}</td><td>${escapeHtml(maskCccdNumber(w.idCard))}</td><td>${escapeHtml(w.room)}</td><td>${escapeHtml(w.joinDate || '-')}</td><td>${escapeHtml(w.retireDate)}</td></tr>`).join('');
+      openModal('retiredModal');
+    }
+
+    function openDamageReportSummary() {
+      const tbody = document.getElementById('damageSummaryBody');
+      let rows = "";
+      Object.values(db).forEach(r => {
+        if (r.damageReport && r.damageReport.length > 0) {
+          const cleanReport = r.damageReport.map(item => item === 'Phòng bẩn / Chưa dọn' ? `<span style="color:#d97706; font-weight:bold;">🧹 ${item}</span>` : `<span style="color:red; font-weight:bold;">🛠 ${item}</span>`).join(', ');
+          rows += `<tr><td><b>${r.id}</b></td><td>${r.area}</td><td>${cleanReport}</td><td><button onclick="fixRoomDamage('${r.id}')" class="btn" style="background:#16a34a; color:white; font-size:0.65rem; padding:2px 5px;">Đã Xử Lý Xong</button></td></tr>`;
+        }
+      });
+      tbody.innerHTML = rows || `<tr><td colspan="4" style="text-align:center; color:#16a34a; font-weight:bold;">Tất cả phòng đều sạch sẽ và hoạt động tốt!</td></tr>`;
+      openModal('damageSummaryModal');
+    }
+
+    function fixRoomDamage(roomId) {
+      if (db[roomId]) {
+        db[roomId].damageReport = [];
+        db[roomId].isModified = true;
+        syncSingleRoom(roomId);
+        openDamageReportSummary();
+        renderRooms();
+      }
+    }
+
+    async function adminClearAll() {
+      if (!confirm("CẢNH BÁO: Bạn có chắc chắn muốn xóa sạch toàn bộ dữ liệu?")) return;
+      localStorage.clear();
+      db = {}; logs = []; retiredList = []; syncQueue = [];
+      normalizeDatabase();
+      persistLocalState();
+      renderRooms();
+      closeModal('adminModal');
+      alert
