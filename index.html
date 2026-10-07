@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Làng Vân">
   <link rel="manifest" href="langvan-manifest.json">
-  <!-- SheetJS & jsQR -->
+  <!-- Thư viện SheetJS & jsQR -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <!-- Firebase SDK v8 -->
@@ -232,10 +232,10 @@
       <span class="icon-camp">🏕️</span>
       <span>LÁN TRẠI LÀNG VÂN</span>
       <span class="capacity-info">(350 Phòng - Sức chứa 7000)</span>
-      <span id="syncIndicator" style="font-size: 0.7rem; color: #16a34a; font-weight: normal; margin-left: 8px; cursor: pointer;" onclick="forceFullResync()" title="Bấm để ép buộc đồng bộ dữ liệu">🟢 Đang khởi tạo...</span>
+      <span id="syncIndicator" style="font-size: 0.7rem; color: #16a34a; font-weight: normal; margin-left: 8px; cursor: pointer;" onclick="forceFullResync()" title="Bấm để đồng bộ dữ liệu">🟢 Đang khởi tạo...</span>
     </div>
     <div>
-      <button id="btnAudioNotify" onclick="toggleAudioNotify()" style="background:#0284c7;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:bold;cursor:pointer;margin-right:8px;">🔔 Bật Nhận Chuông</button>
+      <button id="btnAudioNotify" onclick="toggleAudioNotify()" style="background:#0284c7;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:bold;cursor:pointer;margin-right:8px;">🔔 Nhận Chuông</button>
       <button id="btnTopAdmin" onclick="openAdminPanelClick()" class="btn" style="background:#334155; color:white; font-size:0.7rem; display:none;">🛡️ Quản Trị</button>
     </div>
   </header>
@@ -310,14 +310,14 @@
   <!-- LƯỚI 350 PHÒNG -->
   <div class="room-grid no-print" id="roomGrid"></div>
 
-  <!-- MODAL GHI CHÚ NHANH CHO PHÒNG -->
+  <!-- MODAL GHI CHÚ NHANH CHO PHÒNG (LONG-PRESS) -->
   <div class="modal" id="roomNoteModal">
     <div class="modal-content" style="max-width: 420px; border: 2.5px solid #0284c7; padding: 16px;">
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #e2e8f0; padding-bottom:6px; margin-bottom:10px;">
         <h3 id="noteModalRoomTitle" style="font-size:1.05rem; color:#0284c7; font-weight:800;">📝 GHI CHÚ PHÒNG</h3>
         <button onclick="closeModal('roomNoteModal')" style="padding: 4px 8px; font-weight: bold; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px;">✕ Đóng</button>
       </div>
-      <p style="font-size:0.75rem; color:#64748b; margin-bottom:6px;">Ghi chú thông tin nội bộ (hiển thị ngay ngoài thẻ phòng):</p>
+      <p style="font-size:0.75rem; color:#64748b; margin-bottom:6px;">Ghi chú thông tin nội bộ:</p>
       <textarea id="txtQuickRoomNote" rows="3" style="width:100%; padding:8px; border:1.5px solid var(--border); border-radius:4px; font-size:0.85rem;" placeholder="Ví dụ: Đội thợ cơ điện, Trưởng phòng anh Tuấn..."></textarea>
       <div style="display:flex; gap:8px; margin-top:10px;">
         <button onclick="saveQuickRoomNote()" class="btn" style="flex:2; background:#0284c7; color:white; justify-content:center; padding:10px; font-weight:bold;">💾 Lưu Ghi Chú</button>
@@ -596,9 +596,9 @@
   </div>
 
   <script>
-    // =========================================================================
-    // CẤU HÌNH FIREBASE (GIỮ NGUYÊN HOẶC ĐIỀN ĐÚNG DỰ ÁN CỦA BẠN VÀO ĐÂY)
-    // =========================================================================
+    // ==========================================
+    // CẤU HÌNH FIREBASE DATABASE
+    // ==========================================
     const firebaseConfig = {
       databaseURL: "https://quan-ly-lan-trai-default-rtdb.asia-southeast1.firebasedatabase.app"
     };
@@ -630,6 +630,7 @@
     let currentCameraFacing = "environment";
     let scanTimer = null;
     let persistDebounceTimer = null;
+    let searchDebounceTimer = null;
 
     let currentDeviceId = "";
     let currentDeviceName = "";
@@ -639,7 +640,7 @@
     let isLongPressTriggered = false;
     let activeLongPressRoomId = null;
 
-    // --- INDEXEDDB ---
+    // --- INDEXEDDB CACHE NGOẠI TUYẾN ---
     const IDB_NAME = 'LangVanCampDB';
     const IDB_VERSION = 1;
     const IDB_STORE_NAME = 'app_state';
@@ -731,6 +732,7 @@
             db[rid] = { id: rid, row: r, no: p, area: area, isLocked: false, damageReport: [], isModified: false, customNote: "", workers: [] };
           } else {
             db[rid].id = rid; db[rid].row = r; db[rid].no = p; db[rid].area = area;
+            db[rid].damageReport = Array.isArray(db[rid].damageReport) ? db[rid].damageReport : [];
             db[rid].workers = Array.isArray(db[rid].workers) ? db[rid].workers : [];
           }
         }
@@ -764,7 +766,24 @@
       return String(val || '').replace(/\D/g, '');
     }
 
-    // --- HIỂN THỊ PHÒNG ---
+    function isIdCardDuplicate(idCard) {
+      if (!idCard) return false;
+      const clean = normalizeIdCard(idCard);
+      for (const rid in db) {
+        const workers = db[rid].workers || [];
+        if (workers.some(w => normalizeIdCard(w.idCard) === clean)) return true;
+      }
+      return false;
+    }
+
+    function applyDateMask(input) {
+      let v = input.value.replace(/\D/g, '').slice(0, 8);
+      if (v.length >= 5) input.value = `${v.slice(0,2)}/${v.slice(2,4)}/${v.slice(4)}`;
+      else if (v.length >= 3) input.value = `${v.slice(0,2)}/${v.slice(2)}`;
+      else input.value = v;
+    }
+
+    // --- HIỂN THỊ PHÒNG & TÌM KIẾM ---
     function renderRooms(matchedIds = null) {
       const grid = document.getElementById('roomGrid');
       if (!grid) return;
@@ -775,7 +794,15 @@
       const rooms = Object.values(db)
         .sort((a, b) => a.row - b.row || a.no - b.no)
         .filter(r => (matchedSet || khu === 'ALL' || r.area === khu))
+        .filter(r => roomMatchesStatus(r, status))
         .filter(r => !matchedSet || matchedSet.has(r.id));
+
+      if (matchedSet && rooms.length === 0) {
+        grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 40px 10px; color: #64748b; font-size: 0.9rem;">
+          🔍 Không tìm thấy kết quả phù hợp trên toàn bộ 350 Phòng.
+        </div>`;
+        return;
+      }
 
       grid.innerHTML = rooms.map(r => {
         const count = r.workers ? r.workers.length : 0;
@@ -786,25 +813,116 @@
         else if (count > 0) cls = 'status-occupied';
 
         const isDirty = (r.damageReport || []).includes('Phòng bẩn / Chưa dọn');
+        const normalDamages = (r.damageReport || []).filter(item => item !== 'Phòng bẩn / Chưa dọn');
+        
         const dirtyAlert = isDirty ? `<div class="room-dirty-alert">🧹 Chưa dọn</div>` : '';
+        const damageAlert = normalDamages.length ? `<div class="room-absent-alert">🛠 ${escapeHtml(normalDamages.join(', '))}</div>` : '';
+        const customNoteTag = r.customNote ? `<div class="room-custom-note" title="${escapeHtml(r.customNote)}">📌 ${escapeHtml(r.customNote)}</div>` : '';
 
         return `
-          <div class="room-card ${cls}" onclick="handleRoomClick('${r.id}')">
+          <div class="room-card ${cls}" 
+               onmousedown="startLongPress('${r.id}')" 
+               onmouseup="cancelLongPress()" 
+               ontouchstart="startLongPress('${r.id}')" 
+               ontouchend="cancelLongPress()"
+               onclick="handleRoomClick('${r.id}')">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div class="room-title" style="font-weight:800;">${r.id}</div>
               <span class="badge-tag">${r.isLocked ? 'KHO' : `${count}/${CAPACITY}`}</span>
             </div>
             <div style="font-size:.65rem;margin-top:2px;">${r.area} · Dãy ${r.row}</div>
-            ${dirtyAlert}
+            ${dirtyAlert}${damageAlert}${customNoteTag}
           </div>`;
       }).join('');
       updateDashboardStats();
     }
 
+    function roomMatchesStatus(room, status) {
+      const count = room.workers ? room.workers.length : 0;
+      if (status === 'DIRTY') return (room.damageReport || []).includes('Phòng bẩn / Chưa dọn');
+      if (status === 'PINK') return !!room.isModified;
+      if (status === 'FULL') return count >= CAPACITY;
+      if (status === 'AVAILABLE') return !room.isLocked && count < CAPACITY;
+      if (status === 'DAMAGE') return (room.damageReport || []).some(x => x !== 'Phòng bẩn / Chưa dọn');
+      return true;
+    }
+
+    function handleSearch(query) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        const q = (query || '').trim().toLowerCase();
+        if (!q) {
+          renderRooms();
+          return;
+        }
+        const matched = [];
+        Object.values(db).forEach(r => {
+          if (r.id.toLowerCase().includes(q)) { matched.push(r.id); return; }
+          if (r.customNote && r.customNote.toLowerCase().includes(q)) { matched.push(r.id); return; }
+          const hasWorker = (r.workers || []).some(w => 
+            (w.name && w.name.toLowerCase().includes(q)) ||
+            (w.idCard && w.idCard.includes(q)) ||
+            (w.empId && w.empId.toLowerCase().includes(q)) ||
+            (w.phone && w.phone.includes(q))
+          );
+          if (hasWorker) matched.push(r.id);
+        });
+        renderRooms(matched);
+      }, 150);
+    }
+
+    // --- LONG PRESS GHI CHÚ PHÒNG ---
+    function startLongPress(roomId) {
+      isLongPressTriggered = false;
+      activeLongPressRoomId = roomId;
+      longPressTimer = setTimeout(() => {
+        isLongPressTriggered = true;
+        if (navigator.vibrate) navigator.vibrate(50);
+        openRoomNoteDialog(roomId);
+      }, 600);
+    }
+
+    function cancelLongPress() {
+      clearTimeout(longPressTimer);
+    }
+
     function handleRoomClick(roomId) {
+      if (isLongPressTriggered) {
+        isLongPressTriggered = false;
+        return;
+      }
       openRoomModal(roomId);
     }
 
+    function openRoomNoteDialog(roomId) {
+      const room = db[roomId];
+      if (!room) return;
+      document.getElementById('noteModalRoomTitle').innerText = `📝 GHI CHÚ PHÒNG: ${room.id}`;
+      document.getElementById('txtQuickRoomNote').value = room.customNote || '';
+      openModal('roomNoteModal');
+    }
+
+    function saveQuickRoomNote() {
+      const noteText = document.getElementById('txtQuickRoomNote').value.trim();
+      if (activeLongPressRoomId && db[activeLongPressRoomId]) {
+        db[activeLongPressRoomId].customNote = noteText;
+        db[activeLongPressRoomId].isModified = true;
+        syncSingleRoom(activeLongPressRoomId);
+        closeModal('roomNoteModal');
+        renderRooms();
+      }
+    }
+
+    function clearQuickRoomNote() {
+      if (activeLongPressRoomId && db[activeLongPressRoomId]) {
+        db[activeLongPressRoomId].customNote = "";
+        syncSingleRoom(activeLongPressRoomId);
+        closeModal('roomNoteModal');
+        renderRooms();
+      }
+    }
+
+    // --- MODAL CHI TIẾT & BÁO HỎNG ---
     function openRoomModal(roomId) {
       if (!db[roomId]) return;
       curRoomId = roomId;
@@ -812,8 +930,52 @@
       document.getElementById('roomModalTitle').textContent = `${room.id} (${room.area}) - ${room.workers.length}/${CAPACITY}`;
       const lockBtn = document.getElementById('btnLock');
       lockBtn.textContent = room.isLocked ? '🔓 Mở phòng' : '🔒 Khóa làm kho';
+      updateDamageTagButtons();
       renderWorkersInRoom();
+      document.getElementById('roomInputContainer').style.display = 'none';
       openModal('roomModal');
+    }
+
+    function toggleWorkerForm() {
+      const form = document.getElementById('roomInputContainer');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function toggleDamageTag(tag) {
+      const room = db[curRoomId];
+      if (!room) return;
+      room.damageReport = room.damageReport || [];
+      const idx = room.damageReport.indexOf(tag);
+      if (idx > -1) room.damageReport.splice(idx, 1);
+      else { room.damageReport.push(tag); room.isModified = true; }
+
+      syncSingleRoom(curRoomId);
+      updateDamageTagButtons();
+      renderRooms();
+    }
+
+    function updateDamageTagButtons() {
+      const room = db[curRoomId];
+      if (!room) return;
+      const tags = room.damageReport || [];
+      const tagMap = {
+        'Ban': 'Phòng bẩn / Chưa dọn',
+        'Quat': 'Hỏng Quạt',
+        'Dien': 'Hỏng Điện',
+        'DieuHoa': 'Hỏng Điều Hòa',
+        'OCam': 'Hỏng Ổ Cắm'
+      };
+      Object.keys(tagMap).forEach(key => {
+        const fullTag = tagMap[key];
+        const el = document.getElementById('tag_' + key);
+        if (el) {
+          if (key === 'Ban') {
+            el.className = tags.includes(fullTag) ? 'tag-btn tag-btn-warning active' : 'tag-btn tag-btn-warning';
+          } else {
+            el.className = tags.includes(fullTag) ? 'tag-btn active' : 'tag-btn';
+          }
+        }
+      });
     }
 
     function renderWorkersInRoom() {
@@ -837,7 +999,7 @@
         return `
           <tr>
             <td>${escapeHtml(w.empId || '-')}</td>
-            <td><b>${escapeHtml(w.name)}</b></td>
+            <td><b class="${w.gender === 'Nữ' ? 'female-row' : ''}" ondblclick="editWorkerProfile(${idx})">${escapeHtml(w.name)}</b></td>
             <td>${escapeHtml(w.idCard)}</td>
             <td>${escapeHtml(w.address || '-')}</td>
             <td>
@@ -862,6 +1024,7 @@
       room.workers[idx].attendanceHistory = room.workers[idx].attendanceHistory || {};
       if (status === null) delete room.workers[idx].attendanceHistory[date];
       else room.workers[idx].attendanceHistory[date] = status;
+      room.isModified = true;
       syncSingleRoom(curRoomId);
       renderWorkersInRoom();
     }
@@ -874,6 +1037,7 @@
         w.attendanceHistory = w.attendanceHistory || {};
         w.attendanceHistory[date] = status;
       });
+      room.isModified = true;
       syncSingleRoom(curRoomId);
       renderWorkersInRoom();
     }
@@ -899,6 +1063,88 @@
       renderRooms();
     }
 
+    function addWorkerDirect() {
+      const room = db[curRoomId];
+      if (!room) return alert("Không tìm thấy phòng!");
+      const name = document.getElementById('rName').value.trim();
+      const idCard = normalizeIdCard(document.getElementById('rIdCard').value);
+      if (!name || !idCard) return alert("Vui lòng nhập Họ Tên và Số CCCD!");
+      if (isIdCardDuplicate(idCard)) return alert("Số CCCD này đã tồn tại trong lán trại!");
+
+      const newWorker = {
+        empId: document.getElementById('rEmpId').value.trim(),
+        name, idCard,
+        gender: document.getElementById('rGender').value,
+        dob: document.getElementById('rDob').value.trim(),
+        phone: document.getElementById('rPhone').value.trim(),
+        address: document.getElementById('rAddress').value.trim(),
+        note: document.getElementById('rNote').value.trim(),
+        attendanceHistory: {},
+        joinDate: getTodayVN(),
+        leaveDate: '',
+        updatedAt: Date.now()
+      };
+
+      if (room.workers.length >= CAPACITY) return alert("Phòng đã đủ 20 công nhân!");
+      room.workers.push(newWorker);
+      room.isModified = true;
+
+      syncSingleRoom(curRoomId);
+      renderWorkersInRoom();
+      renderRooms();
+      ['rEmpId', 'rName', 'rIdCard', 'rDob', 'rPhone', 'rAddress', 'rNote'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+      });
+      document.getElementById('roomInputContainer').style.display = 'none';
+    }
+
+    function editWorkerProfile(idx) {
+      const room = db[curRoomId];
+      const worker = room?.workers?.[idx];
+      if (!worker) return;
+      document.getElementById('editWorkerIdx').value = idx;
+      document.getElementById('eEmpId').value = worker.empId || '';
+      document.getElementById('eName').value = worker.name || '';
+      document.getElementById('eGender').value = worker.gender === 'Nữ' ? 'Nữ' : 'Nam';
+      document.getElementById('eIdCard').value = worker.idCard || '';
+      document.getElementById('eDob').value = worker.dob || '';
+      document.getElementById('ePhone').value = worker.phone || '';
+      document.getElementById('eAddress').value = worker.address || '';
+      document.getElementById('eNote').value = worker.note || '';
+      document.getElementById('eJoinDate').value = worker.joinDate || '';
+      document.getElementById('eLeaveDate').value = worker.leaveDate || '';
+      openModal('editWorkerModal');
+    }
+
+    function saveWorkerAllEdit() {
+      const room = db[curRoomId];
+      const idx = Number(document.getElementById('editWorkerIdx').value);
+      const worker = room?.workers?.[idx];
+      if (!worker) return;
+
+      const name = document.getElementById('eName').value.trim();
+      const idCard = normalizeIdCard(document.getElementById('eIdCard').value);
+      if (!name || !idCard) return alert("Họ tên và CCCD không được để trống!");
+
+      worker.empId = document.getElementById('eEmpId').value.trim();
+      worker.name = name;
+      worker.gender = document.getElementById('eGender').value;
+      worker.idCard = idCard;
+      worker.dob = document.getElementById('eDob').value.trim();
+      worker.phone = document.getElementById('ePhone').value.trim();
+      worker.address = document.getElementById('eAddress').value.trim();
+      worker.note = document.getElementById('eNote').value.trim();
+      worker.joinDate = document.getElementById('eJoinDate').value.trim();
+      worker.leaveDate = document.getElementById('eLeaveDate').value || '';
+      worker.updatedAt = Date.now();
+
+      room.isModified = true;
+      syncSingleRoom(curRoomId);
+      closeModal('editWorkerModal');
+      renderWorkersInRoom();
+      renderRooms();
+    }
+
     function confirmRetireWorker(idx) {
       const worker = db[curRoomId].workers[idx];
       if (!confirm(`XÁC NHẬN NGHỈ VIỆC: ${worker.name}?`)) return;
@@ -911,32 +1157,347 @@
         joinDate: removed.joinDate || "",
         retireDate: getTodayVN()
       });
+      db[curRoomId].isModified = true;
       syncSingleRoom(curRoomId);
       renderWorkersInRoom();
       renderRooms();
     }
 
-    function openModal(id) { document.getElementById(id).style.display = 'flex'; }
-    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+    // --- ĐIỀU CHUYỂN PHÒNG ---
+    function openImmediateTransferTab(idx) {
+      const room = db[curRoomId];
+      if (!room || !room.workers[idx]) return;
 
-    function populateRowSelects() {
-      const rSel = document.getElementById('transferRowSelect');
-      const iSel = document.getElementById('importRowSelect');
-      if (!rSel) return;
-      rSel.innerHTML = "";
-      if (iSel) iSel.innerHTML = "";
-      for (let r = 1; r <= TOTAL_ROWS; r++) {
+      transferringWorkerIdx = idx;
+      const worker = room.workers[idx];
+      document.getElementById('transferWorkerName').innerText = `${worker.name} (${worker.empId || '-'})`;
+      document.getElementById('transferCurrentRoom').innerText = curRoomId;
+      
+      const rowSelect = document.getElementById('transferRowSelect');
+      if (rowSelect) rowSelect.value = room.row;
+      
+      updateTransferRoomList();
+      openModal('transferModal');
+    }
+
+    function updateTransferRoomList() {
+      const row = parseInt(document.getElementById('transferRowSelect').value);
+      const sel = document.getElementById('transferTargetSelect');
+      sel.innerHTML = "";
+      
+      let hasAvailableRoom = false;
+      Object.values(db).forEach(r => {
+        const count = r.workers ? r.workers.length : 0;
+        if (r.row === row && !r.isLocked && r.id !== curRoomId && count < CAPACITY) {
+          const opt = document.createElement('option');
+          opt.value = r.id;
+          opt.innerText = `${r.id} (Còn ${CAPACITY - count} chỗ)`;
+          sel.appendChild(opt);
+          hasAvailableRoom = true;
+        }
+      });
+
+      if (!hasAvailableRoom) {
         const opt = document.createElement('option');
-        opt.value = r; opt.innerText = `Dãy ${r} (${getAreaByRow(r)})`;
-        rSel.appendChild(opt);
-        if (iSel) iSel.appendChild(opt.cloneNode(true));
+        opt.value = "";
+        opt.innerText = "Dãy này hiện đã hết chỗ trống";
+        sel.appendChild(opt);
       }
     }
 
-    function populateTargetRoomSelects() {
-      const gSel = document.getElementById('gTargetRoom');
-      if (!gSel) return;
-      gSel.innerHTML = Object.keys(db).sort().map(rid => `<option value="${rid}">${rid}</option>`).join('');
+    function confirmTransferWorker() {
+      const targetId = document.getElementById('transferTargetSelect').value;
+      if (!targetId || !db[targetId]) return alert("Vui lòng chọn phòng đến hợp lệ!");
+      if (!db[curRoomId] || !db[curRoomId].workers[transferringWorkerIdx]) return;
+
+      const worker = db[curRoomId].workers.splice(transferringWorkerIdx, 1)[0];
+      worker.updatedAt = Date.now();
+      db[targetId].workers = db[targetId].workers || [];
+      db[targetId].workers.push(worker);
+      db[curRoomId].isModified = true;
+      db[targetId].isModified = true;
+
+      syncSingleRoom(curRoomId);
+      syncSingleRoom(targetId);
+
+      closeModal('transferModal');
+      renderWorkersInRoom();
+      renderRooms();
+      alert(`Đã chuyển thành công ${worker.name} sang phòng ${targetId}!`);
+    }
+
+    // --- CAMERA & QUÉT MÃ QR CCCD ---
+    function handleScanAuthClick() {
+      populateTargetRoomSelects();
+      openModal('globalScanModal');
+      startDirectCamera();
+    }
+
+    async function startDirectCamera() {
+      const video = document.getElementById('camVideo'), msg = document.getElementById('camStatusMsg');
+      if (!video || !msg) return;
+      closeCameraStream();
+      msg.innerText = "Đang kích hoạt camera...";
+
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: currentCameraFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        video.srcObject = localStream;
+        await video.play();
+        isScanning = true;
+        msg.innerText = "Đặt mã QR vào ô vuông xanh";
+        scanVideoFrame();
+      } catch (e) {
+        msg.innerText = "Không mở được camera. Vui lòng bấm 'Tải Ảnh CCCD'.";
+      }
+    }
+
+    function scanVideoFrame() {
+      if (!isScanning) return;
+      const video = document.getElementById('camVideo'), canvas = document.getElementById('qrCanvas');
+      if (!video || !canvas || scanTimer) return;
+
+      scanTimer = setTimeout(() => {
+        scanTimer = null;
+        if (!isScanning) return;
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0) {
+          const vW = video.videoWidth, vH = video.videoHeight;
+          const boxSize = Math.round(Math.min(vW, vH) * 0.65);
+          canvas.width = boxSize;
+          canvas.height = boxSize;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(video, (vW - boxSize)/2, (vH - boxSize)/2, boxSize, boxSize, 0, 0, boxSize, boxSize);
+
+          try {
+            const imageData = ctx.getImageData(0, 0, boxSize, boxSize);
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            if (code?.data) {
+              isScanning = false;
+              parseCccdData(code.data);
+              return;
+            }
+          } catch (e) {}
+        }
+        scanVideoFrame();
+      }, 100);
+    }
+
+    function toggleCameraFacing() {
+      closeCameraStream();
+      currentCameraFacing = currentCameraFacing === "environment" ? "user" : "environment";
+      startDirectCamera();
+    }
+
+    function closeCameraStream() {
+      isScanning = false;
+      if (scanTimer) clearTimeout(scanTimer);
+      if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+        localStream = null;
+      }
+    }
+
+    function closeGlobalScanner() {
+      closeCameraStream();
+      closeModal('globalScanModal');
+    }
+
+    function parseCccdData(rawText) {
+      const parts = String(rawText || '').replace(/^\uFEFF/, '').trim().split('|');
+      if (parts.length < 5) return alert("Không nhận diện được định dạng CCCD.");
+      const cardNo = normalizeIdCard(parts[0]);
+      document.getElementById('gIdCard').value = cardNo;
+      document.getElementById('gName').value = parts[2] || parts[1] || '';
+      
+      let dobStr = parts[3] || parts[2] || '';
+      if (dobStr.length === 8) dobStr = `${dobStr.slice(0,2)}/${dobStr.slice(2,4)}/${dobStr.slice(4)}`;
+      document.getElementById('gDob').value = dobStr;
+      
+      document.getElementById('gGender').value = /nu|nữ/i.test(parts[4] || '') ? 'Nữ' : 'Nam';
+      document.getElementById('gAddress').value = parts[5] || parts[4] || '';
+      alert("Đã nhận diện CCCD: " + (parts[2] || parts[1]));
+    }
+
+    function handleFileCCCDQuick(input) {
+      if (!input.files || !input.files.length) return;
+      const file = input.files[0];
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.getElementById('qrCanvas');
+          canvas.width = img.width; canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const imgData = ctx.getImageData(0, 0, img.width, img.height);
+          const code = jsQR(imgData.data, imgData.width, imgData.height);
+          if (code && code.data) parseCccdData(code.data);
+          else alert("Không tìm thấy mã QR trên tệp ảnh.");
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+      input.value = "";
+    }
+
+    function saveQuickScanWorker() {
+      const rid = document.getElementById('gTargetRoom').value;
+      if (!rid || !db[rid]) return alert("Chưa chọn phòng!");
+      const name = document.getElementById('gName').value.trim();
+      const idCard = normalizeIdCard(document.getElementById('gIdCard').value);
+      if (!name || !idCard) return alert("Thiếu Họ Tên hoặc CCCD!");
+      if (isIdCardDuplicate(idCard)) return alert("Số CCCD này đã tồn tại trong lán trại!");
+
+      const newWorker = {
+        empId: document.getElementById('gEmpId').value.trim(),
+        name, idCard,
+        gender: document.getElementById('gGender').value,
+        dob: document.getElementById('gDob').value.trim(),
+        phone: document.getElementById('gPhone').value.trim(),
+        address: document.getElementById('gAddress').value.trim(),
+        note: document.getElementById('gNote').value.trim(),
+        attendanceHistory: {},
+        joinDate: getTodayVN(),
+        leaveDate: '',
+        updatedAt: Date.now()
+      };
+
+      const room = db[rid];
+      if (room.workers.length >= CAPACITY) return alert("Phòng đã đủ 20 công nhân!");
+      room.workers.push(newWorker);
+      room.isModified = true;
+
+      syncSingleRoom(rid);
+      renderRooms();
+      closeGlobalScanner();
+      alert(`Đã xếp ${name} vào phòng ${rid}!`);
+    }
+
+    // --- NHẬP EXCEL ---
+    function handleImportAuthClick() {
+      toggleImportTarget();
+      openModal('importModal');
+    }
+
+    function toggleImportTarget() {
+      const mode = document.getElementById('importModeSelect').value;
+      document.getElementById('importRowContainer').style.display = mode === 'TARGET_ROW' ? 'flex' : 'none';
+      document.getElementById('importRoomContainer').style.display = mode === 'TARGET_ROOM' ? 'flex' : 'none';
+      document.getElementById('importAreaContainer').style.display = mode === 'TARGET_AREA' ? 'flex' : 'none';
+    }
+
+    function cleanKey(str) {
+      return (str || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+    }
+
+    function handleExcelUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const wb = XLSX.read(data, { type: 'array' });
+          const firstSheet = wb.Sheets[wb.SheetNames[0]];
+
+          const rawMatrix = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
+          let headerRowIndex = 0;
+          for (let i = 0; i < Math.min(rawMatrix.length, 15); i++) {
+            const rowStr = rawMatrix[i].map(c => cleanKey(c)).join(" ");
+            if (rowStr.includes("ten") || rowStr.includes("cccd") || rowStr.includes("cmnd") || rowStr.includes("hoten")) {
+              headerRowIndex = i;
+              break;
+            }
+          }
+
+          const rawRows = XLSX.utils.sheet_to_json(firstSheet, { range: headerRowIndex, defval: "" });
+          allocateWorkersFromExcel(rawRows);
+          closeModal('importModal');
+          e.target.value = "";
+        } catch(err) {
+          alert("Lỗi đọc file Excel: " + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function allocateWorkersFromExcel(rawRows) {
+      const mode = document.getElementById('importModeSelect').value;
+      const targetRow = parseInt(document.getElementById('importRowSelect').value);
+      const targetArea = document.getElementById('importAreaSelect').value;
+      const startRoomId = document.getElementById('importRoomStartSelect').value;
+
+      let candidateRooms = Object.values(db).filter(r => !r.isLocked);
+      if (mode === 'TARGET_ROW') candidateRooms = candidateRooms.filter(r => r.row === targetRow);
+      else if (mode === 'TARGET_AREA') candidateRooms = candidateRooms.filter(r => r.area === targetArea);
+      else if (mode === 'TARGET_ROOM') {
+        let sIdx = candidateRooms.findIndex(r => r.id === startRoomId);
+        if (sIdx !== -1) candidateRooms = candidateRooms.slice(sIdx);
+      }
+
+      let count = 0, rIdx = 0;
+      const today = getTodayVN();
+
+      rawRows.forEach((row, rowIdx) => {
+        let mapped = {};
+        Object.keys(row).forEach(k => mapped[cleanKey(k)] = row[k]);
+
+        let name = "";
+        const nameKeys = ['hovaten', 'hoten', 'ten', 'name', 'fullname', 'congnhan'];
+        for (let k of nameKeys) {
+          if (mapped[k]) { name = String(mapped[k]).trim(); break; }
+        }
+
+        let idCard = "";
+        const idKeys = ['socccd', 'cccd', 'cmnd', 'sothe', 'id', 'cancuoc'];
+        for (let k of idKeys) {
+          if (mapped[k]) {
+            let rawId = String(mapped[k]).trim();
+            if (rawId.includes("e+") || rawId.includes("E+")) rawId = Number(rawId).toFixed(0);
+            idCard = normalizeIdCard(rawId);
+            break;
+          }
+        }
+
+        if (!idCard) {
+          Object.values(row).forEach(val => {
+            let cleanVal = String(val).replace(/\D/g, '');
+            if ((cleanVal.length === 12 || cleanVal.length === 9) && !idCard) idCard = cleanVal;
+          });
+        }
+
+        if ((idCard.length === 12 || idCard.length === 9) && !isIdCardDuplicate(idCard)) {
+          if (!name) name = `CÔNG NHÂN ${rowIdx + 1}`;
+
+          let targetRoom = null;
+          while (rIdx < candidateRooms.length && candidateRooms[rIdx].workers.length >= CAPACITY) rIdx++;
+          targetRoom = candidateRooms[rIdx];
+
+          if (targetRoom && targetRoom.workers.length < CAPACITY && !targetRoom.isLocked) {
+            targetRoom.workers.push({
+              empId: String(mapped['manv'] || mapped['mnv'] || '').trim(),
+              name: String(name).trim(),
+              idCard: idCard,
+              gender: /nu|nữ/i.test(mapped['gioitinh'] || '') ? 'Nữ' : 'Nam',
+              dob: String(mapped['ngaysinh'] || mapped['namsinh'] || '').trim(),
+              phone: String(mapped['sdt'] || mapped['phone'] || '').trim(),
+              address: String(mapped['diachi'] || mapped['quequan'] || '').trim(),
+              note: String(mapped['ghichu'] || '').trim(),
+              attendanceHistory: {},
+              joinDate: today,
+              leaveDate: '',
+              updatedAt: Date.now()
+            });
+            targetRoom.isModified = true;
+            syncSingleRoom(targetRoom.id);
+            count++;
+          }
+        }
+      });
+
+      renderRooms();
+      alert(`ĐÃ NẠP THÀNH CÔNG: Đã tiếp nhận ${count} công nhân!`);
     }
 
     // --- ĐỒNG BỘ REALTIME DATABASE ---
@@ -947,176 +1508,4 @@
       try {
         await window.firestoreDb.ref(`rooms/${roomId}`).set(db[roomId]);
       } catch (e) {
-        console.warn("Lỗi đồng bộ Firebase:", e);
-      }
-    }
-
-    function initFirebaseSync() {
-      if (!window.firestoreDb) return;
-      const ind = document.getElementById('syncIndicator');
-      if (ind) ind.innerText = "🟢 Đang kết nối Firebase...";
-
-      window.firestoreDb.ref('rooms').on('value', (snap) => {
-        const val = snap.val();
-        if (val) {
-          Object.keys(val).forEach(rid => {
-            if (db[rid]) db[rid] = val[rid];
-          });
-          renderRooms();
-          if (curRoomId && db[curRoomId]) renderWorkersInRoom();
-        }
-        if (ind) ind.innerText = "🟢 Đã đồng bộ trực tuyến";
-      }, (err) => {
-        if (ind) {
-          ind.innerText = "🔴 Ngoại tuyến";
-          ind.style.color = "#dc2626";
-        }
-      });
-    }
-
-    async function forceFullResync() {
-      alert("Đang kiểm tra và tải lại dữ liệu mới nhất...");
-      if (window.firestoreDb) {
-        const snap = await window.firestoreDb.ref('rooms').once('value');
-        const val = snap.val();
-        if (val) {
-          Object.keys(val).forEach(rid => { if (db[rid]) db[rid] = val[rid]; });
-          persistLocalState();
-          renderRooms();
-        }
-      }
-    }
-
-    // --- DASHBOARD VÀ XUẤT EXCEL BÁO CÁO NGÀY ---
-    function updateDashboardStats() {
-      const rooms = Object.values(db);
-      let total = 0, male = 0, female = 0, enteredToday = 0;
-      const today = getLocalDateISO();
-
-      rooms.forEach(r => {
-        const count = r.workers ? r.workers.length : 0;
-        total += count;
-        (r.workers || []).forEach(w => {
-          if (w.gender === 'Nữ') female++; else male++;
-          if (w.joinDate === getTodayVN()) enteredToday++;
-        });
-      });
-
-      const usableRooms = rooms.filter(r => !r.isLocked);
-      const availableRooms = usableRooms.filter(r => (r.workers ? r.workers.length : 0) < CAPACITY).length;
-      const fullRooms = usableRooms.filter(r => (r.workers ? r.workers.length : 0) >= CAPACITY).length;
-      const retiredToday = retiredList.filter(w => w.retireDate === getTodayVN()).length;
-      const occupancy = rooms.length ? Math.round((total / (rooms.length * CAPACITY)) * 100) : 0;
-      const diffToday = enteredToday - retiredToday;
-
-      const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-      setText('statOcc', `${occupancy}%`);
-      setText('statTotal', `${total}/${rooms.length * CAPACITY}`);
-      setText('statToday', enteredToday > 0 ? `+${enteredToday}` : enteredToday);
-      setText('statRetiredToday', retiredToday > 0 ? `-${retiredToday}` : retiredToday);
-      
-      const diffEl = document.getElementById('statDiffToday');
-      if (diffEl) {
-        diffEl.textContent = diffToday > 0 ? `+${diffToday}` : diffToday;
-        diffEl.style.color = diffToday > 0 ? "var(--green)" : diffToday < 0 ? "var(--red)" : "#64748b";
-      }
-
-      const genderEl = document.getElementById('statGender');
-      if (genderEl) genderEl.innerHTML = `${male}/<span style="color:var(--red);font-weight:bold;">${female}</span>`;
-      const roomStatusEl = document.getElementById('statRoomStatus');
-      if (roomStatusEl) roomStatusEl.innerHTML = `${availableRooms}/<span style="color:var(--red);font-weight:bold;">${fullRooms}</span>`;
-
-      // Lưu snapshot báo cáo ngày
-      dailyReports[today] = {
-        date: today,
-        occupancy: occupancy + '%',
-        total: total,
-        capacity: rooms.length * CAPACITY,
-        enteredToday: enteredToday,
-        retiredToday: retiredToday,
-        diffToday: diffToday,
-        male: male,
-        female: female,
-        availableRooms: availableRooms,
-        fullRooms: fullRooms
-      };
-      persistLocalState();
-    }
-
-    function buildDailyReportSheet(wb) {
-      const rows = Object.values(dailyReports || {}).reverse().map(r => ({
-        'Ngày': r.date,
-        'Hiệu suất': r.occupancy,
-        'Tổng quân số': r.total,
-        'Sức chứa': r.capacity,
-        'Vào hôm nay': r.enteredToday,
-        'Nghỉ trong ngày': r.retiredToday,
-        'Biến động hôm nay': r.diffToday,
-        'Nam': r.male,
-        'Nữ': r.female,
-        'Phòng còn chỗ': r.availableRooms,
-        'Phòng đầy (Đỏ)': r.fullRooms
-      }));
-
-      const ws = XLSX.utils.aoa_to_sheet([]);
-      XLSX.utils.sheet_add_aoa(ws, [['BÁO CÁO THỐNG KÊ QUÂN SỐ THEO NGÀY']], { origin: 'A1' });
-      XLSX.utils.sheet_add_aoa(ws, [['Báo cáo lưu trữ lịch sử biến động quân số qua các ngày']], { origin: 'A3' });
-
-      const headers = ['Ngày','Hiệu suất','Tổng quân số','Sức chứa','Vào hôm nay','Nghỉ trong ngày','Biến động hôm nay','Nam','Nữ','Phòng còn chỗ','Phòng đầy (Đỏ)'];
-      XLSX.utils.sheet_add_aoa(ws, [headers], { origin: 'A5' });
-      if (rows.length) XLSX.utils.sheet_add_json(ws, rows, { origin: 'A6', skipHeader: true });
-
-      ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:10} }];
-      ws['!cols'] = [14, 12, 14, 12, 14, 16, 18, 9, 9, 16, 17].map(w => ({ wch: w }));
-      if (rows.length) ws['!autofilter'] = { ref: `A5:K${5 + rows.length}` };
-      ws['!freeze'] = { xSplit: 0, ySplit: 5 };
-
-      XLSX.utils.book_append_sheet(wb, ws, 'Báo cáo hàng ngày');
-    }
-
-    function exportDataExcel() {
-      updateDashboardStats();
-      const wb = XLSX.utils.book_new();
-      buildDailyReportSheet(wb);
-
-      // Sheet Danh sách công nhân
-      const wRows = [];
-      Object.values(db).forEach(room => {
-        (room.workers || []).forEach(w => wRows.push({
-          'Mã NV': w.empId || '',
-          'Họ và Tên': w.name || '',
-          'CCCD': w.idCard || '',
-          'Giới tính': w.gender || '',
-          'Ngày sinh': w.dob || '',
-          'SĐT': w.phone || '',
-          'Địa chỉ': w.address || '',
-          'Phòng': room.id,
-          'Ngày vào': w.joinDate || '',
-          'Ghi chú': w.note || ''
-        }));
-      });
-      const wsWorker = XLSX.utils.json_to_sheet(wRows);
-      XLSX.utils.book_append_sheet(wb, wsWorker, 'Danh sách công nhân');
-
-      // Sheet Phòng
-      const rRows = Object.values(db).map(r => ({
-        'Phòng': r.id,
-        'Khu': r.area,
-        'Số người': r.workers ? r.workers.length : 0,
-        'Sức chứa': CAPACITY,
-        'Trạng thái': r.isLocked ? 'Khóa' : 'Đang dùng'
-      }));
-      const wsRoom = XLSX.utils.json_to_sheet(rRows);
-      XLSX.utils.book_append_sheet(wb, wsRoom, 'Danh sách phòng');
-
-      XLSX.writeFile(wb, `LangVan_XuatExcel_${getLocalDateISO()}.xlsx`);
-    }
-
-    // --- KHỞI ĐỘNG HỆ THỐNG ---
-    window.addEventListener('DOMContentLoaded', async () => {
-      await loadDatabaseAsync();
-      initFirebaseSync();
-    });
-  </script>
-</body>
-</html>
+        console.warn("L
