@@ -12,6 +12,7 @@
   <link rel="manifest" href="langvan-manifest.json">
   <!-- Thư viện SheetJS & jsQR -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <!-- Firebase SDK v8 -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -247,12 +248,12 @@
       <button class="btn-rename-device" onclick="renameCurrentDevice()">✏️ Đổi Tên</button>
     </div>
     <div>
-      <span>Quyền: <b id="lblUserRole" style="color:#16a34a;">Cán Bộ (Toàn quyền)</b></span>
-      <span id="lblRoleHelp" style="color:#64748b; margin-left:4px;">(Toàn quyền vận hành)</span>
+      <span>Quyền: <b id="lblUserRole" style="color:#d97706;">Đang kiểm tra...</b></span>
+      <span id="lblRoleHelp" style="color:#64748b; margin-left:4px;">(Chỉ xem - Liên hệ Admin duyệt)</span>
     </div>
   </div>
 
-  <!-- THANH THỐNG KÊ (DASHBOARD) -->
+  <!-- THANH THỐNG KÊ (ĐÃ BỔ SUNG THẺ TĂNG TRƯỞNG & BIẾN ĐỘNG TRONG NGÀY) -->
   <div class="dashboard-container no-print">
     <div class="compact-dashboard">
       <div class="kpi-chip"><div class="lbl">Hiệu Suất</div><div class="val" id="statOcc">0%</div></div>
@@ -684,6 +685,8 @@
     let db = {};
     let logs = [];
     let retiredList = [];
+    let dailyReports = {};
+    let dailyReportWriteTimer = null;
     let curRoomId = null;
     let transferringWorkerIdx = null;
 
@@ -701,7 +704,7 @@
 
     let currentDeviceId = "";
     let currentDeviceName = "";
-    let currentUserRole = "staff"; // Mặc định cho phép thao tác offline
+    let currentUserRole = "viewer";
     let approvedDevices = {};
 
     let longPressTimer = null;
@@ -711,59 +714,43 @@
     let syncQueue = [];
     let isFlushingQueue = false;
 
-    // ==================== 1. INDEXEDDB AN TOÀN TUYỆT ĐỐI ====================
+    // ==================== 1. INDEXEDDB NATIVE STORAGE ====================
     const IDB_NAME = 'LangVanCampDB';
     const IDB_VERSION = 1;
     const IDB_STORE_NAME = 'app_state';
 
     function openIndexedDB() {
-      return new Promise((resolve) => {
-        try {
-          if (!window.indexedDB) return resolve(null);
-          const req = indexedDB.open(IDB_NAME, IDB_VERSION);
-          req.onupgradeneeded = (e) => {
-            const idbInstance = e.target.result;
-            if (!idbInstance.objectStoreNames.contains(IDB_STORE_NAME)) {
-              idbInstance.createObjectStore(IDB_STORE_NAME);
-            }
-          };
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => resolve(null);
-        } catch(e) {
-          resolve(null);
-        }
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const idbInstance = e.target.result;
+          if (!idbInstance.objectStoreNames.contains(IDB_STORE_NAME)) {
+            idbInstance.createObjectStore(IDB_STORE_NAME);
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
       });
     }
 
     async function idbGet(key) {
-      try {
-        const idb = await openIndexedDB();
-        if (!idb) return localStorage.getItem('LV_' + key) ? JSON.parse(localStorage.getItem('LV_' + key)) : null;
-        return new Promise((resolve) => {
-          const tx = idb.transaction(IDB_STORE_NAME, 'readonly');
-          const req = tx.objectStore(IDB_STORE_NAME).get(key);
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => resolve(null);
-        });
-      } catch (e) {
-        return null;
-      }
+      const idb = await openIndexedDB();
+      return new Promise((resolve, reject) => {
+        const tx = idb.transaction(IDB_STORE_NAME, 'readonly');
+        const req = tx.objectStore(IDB_STORE_NAME).get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
     }
 
     async function idbSet(key, val) {
-      try {
-        const idb = await openIndexedDB();
-        if (!idb) {
-          localStorage.setItem('LV_' + key, JSON.stringify(val));
-          return;
-        }
-        return new Promise((resolve) => {
-          const tx = idb.transaction(IDB_STORE_NAME, 'readwrite');
-          const req = tx.objectStore(IDB_STORE_NAME).put(val, key);
-          req.onsuccess = () => resolve();
-          req.onerror = () => resolve();
-        });
-      } catch (e) {}
+      const idb = await openIndexedDB();
+      return new Promise((resolve, reject) => {
+        const tx = idb.transaction(IDB_STORE_NAME, 'readwrite');
+        const req = tx.objectStore(IDB_STORE_NAME).put(val, key);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
     }
 
     async function loadDatabaseAsync() {
@@ -771,6 +758,7 @@
         let localDb = await idbGet('db');
         let localLogs = await idbGet('logs');
         let localRetired = await idbGet('retiredList');
+        let localDailyReports = await idbGet('dailyReports');
         let localTs = await idbGet('lastSyncTimestamp');
 
         if (!localDb) {
@@ -779,15 +767,22 @@
             localDb = JSON.parse(oldDb);
             localLogs = JSON.parse(localStorage.getItem('LANG_VAN_FINAL_PRO_LOGS') || '[]');
             localRetired = JSON.parse(localStorage.getItem('LANG_VAN_FINAL_PRO_RETIRED') || '[]');
+            await idbSet('db', localDb);
+            await idbSet('logs', localLogs);
+            await idbSet('retiredList', localRetired);
+            localStorage.removeItem('LANG_VAN_FINAL_PRO_DB');
+            localStorage.removeItem('LANG_VAN_FINAL_PRO_LOGS');
+            localStorage.removeItem('LANG_VAN_FINAL_PRO_RETIRED');
           }
         }
 
         db = localDb && typeof localDb === 'object' ? localDb : {};
         logs = Array.isArray(localLogs) ? localLogs : [];
         retiredList = Array.isArray(localRetired) ? localRetired : [];
+        dailyReports = (localDailyReports && typeof localDailyReports === 'object') ? localDailyReports : {};
         lastSyncTimestamp = Number(localTs) || 0;
       } catch (err) {
-        db = {}; logs = []; retiredList = []; lastSyncTimestamp = 0;
+        db = {}; logs = []; retiredList = []; dailyReports = {}; lastSyncTimestamp = 0;
       }
       normalizeDatabase();
     }
@@ -800,9 +795,12 @@
             idbSet('db', db),
             idbSet('logs', logs.slice(0, 500)),
             idbSet('retiredList', retiredList),
+            idbSet('dailyReports', dailyReports),
             idbSet('lastSyncTimestamp', lastSyncTimestamp)
           ]);
-        } catch (e) {}
+        } catch (e) {
+          console.error("Lỗi lưu IndexedDB:", e);
+        }
       }, 150);
     }
 
@@ -821,7 +819,9 @@
       try {
         await idbSet('syncQueue', syncQueue);
         updateSyncIndicatorBadge();
-      } catch (e) {}
+      } catch (e) {
+        console.error("Lỗi lưu syncQueue:", e);
+      }
     }
 
     function enqueueRoomSync(roomId) {
@@ -950,7 +950,7 @@
 
     // ==================== 4. PHÂN QUYỀN VÀ ĐỊNH DANH ====================
     function initDeviceIdentity(uid) {
-      currentDeviceId = uid || "DEV-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+      currentDeviceId = uid;
       let dName = localStorage.getItem('LV_DEVICE_NAME');
       if (!dName) {
         dName = "Cán bộ (" + currentDeviceId.substring(0, 6).toUpperCase() + ")";
@@ -994,11 +994,11 @@
           devRef.set({
             deviceId: currentDeviceId,
             name: currentDeviceName,
-            status: "approved",
+            status: "pending",
             role: "staff",
             createdAt: new Date().toISOString()
           });
-          currentUserRole = 'staff';
+          currentUserRole = 'viewer';
         }
         updateUIPermissions();
         syncAllRoomsInBackground();
@@ -1038,14 +1038,26 @@
     }
 
     function handleScanAuthClick() {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') {
+        alert(`THIẾT BỊ CHƯA ĐƯỢC DUYỆT!\nBạn chỉ có quyền xem. Vui lòng liên hệ Quản trị viên duyệt cán bộ [${currentDeviceName}]`);
+        return;
+      }
       openGlobalScanner();
     }
 
     function handleImportAuthClick() {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') {
+        alert("THIẾT BỊ CHƯA ĐƯỢC DUYỆT!\nBạn chỉ có quyền xem. Vui lòng liên hệ Quản trị viên cấp quyền nạp Excel.");
+        return;
+      }
       openImportModal();
     }
 
     function openAdminPanelClick() {
+      if (currentUserRole !== 'admin') {
+        alert("CHỨC NĂNG DÀNH CHO QUẢN TRỊ VIÊN!\nTài khoản thiết bị này chưa được cấp vai trò Admin trên hệ thống.");
+        return;
+      }
       checkAbsenceAlerts();
       adminViewLogs();
       openModal('adminModal');
@@ -1053,7 +1065,9 @@
 
     function maskCccdNumber(cccd) {
       if (!cccd) return '-';
-      return cccd;
+      if (currentUserRole === 'staff' || currentUserRole === 'admin') return cccd;
+      const str = String(cccd).trim();
+      return str.length >= 9 ? str.slice(0, 3) + '******' + str.slice(-3) : '******';
     }
 
     function openDeviceAuthModal() {
@@ -1112,6 +1126,7 @@
       if (!db || typeof db !== 'object' || Array.isArray(db)) db = {};
       if (!Array.isArray(logs)) logs = [];
       if (!Array.isArray(retiredList)) retiredList = [];
+      if (!dailyReports || typeof dailyReports !== 'object' || Array.isArray(dailyReports)) dailyReports = {};
 
       for (let r = 1; r <= TOTAL_ROWS; r++) {
         const area = getAreaByRow(r);
@@ -1191,7 +1206,7 @@
       return str.replace(/\D/g, '');
     }
 
-    // ==================== 6. ĐỒNG BỘ NGUYÊN TỬ ====================
+    // ==================== 6. ĐỒNG BỘ NGUYÊN TỬ & DELTA SYNC HOÀN CHỈNH ====================
     function workerKey(w) {
       return normalizeIdCard(w?.idCard) || String(w?.empId || '').trim() || String(w?.name || '').trim().toLowerCase();
     }
@@ -1274,6 +1289,7 @@
         updateSyncIndicatorBadge();
         return true;
       } catch (err) {
+        console.warn(`Lỗi đồng bộ phòng ${roomId}:`, err);
         enqueueRoomSync(roomId);
         return false;
       }
@@ -1282,7 +1298,7 @@
     async function forceFullResync() {
       lastSyncTimestamp = 0;
       await idbSet('lastSyncTimestamp', 0);
-      alert("Đang kiểm tra và tải lại dữ liệu mới nhất...");
+      alert("Đang kiểm tra và tải lại dữ liệu công nhân mới nhất...");
       await syncAllRoomsInBackground(true);
     }
 
@@ -1312,6 +1328,13 @@
           }
         });
 
+        const dailyReportsSnap = await window.firestoreDb.ref('dailyReports').once('value');
+        const remoteDailyReports = dailyReportsSnap.val();
+        if (remoteDailyReports && typeof remoteDailyReports === 'object') {
+          dailyReports = { ...dailyReports, ...remoteDailyReports };
+          await idbSet('dailyReports', dailyReports);
+        }
+
         const retiredSnap = await window.firestoreDb.ref('retired').limitToLast(100).once('value');
         const remoteRetired = retiredSnap.val();
         if (remoteRetired && typeof remoteRetired === 'object') {
@@ -1330,9 +1353,18 @@
           return;
         }
 
+        if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
+          playNotifyBeep(920, 0.35);
+        }
+
         const CHUNK_SIZE = 15;
         for (let i = 0; i < dirtyRoomIds.length; i += CHUNK_SIZE) {
           const chunk = dirtyRoomIds.slice(i, i + CHUNK_SIZE);
+          if (indicator) {
+            indicator.innerText = `🔄 Đang tải ${Math.min(i + CHUNK_SIZE, dirtyRoomIds.length)}/${dirtyRoomIds.length} phòng...`;
+            indicator.style.color = "#b45309";
+          }
+
           const promises = chunk.map(rid => window.firestoreDb.ref(`rooms/${rid}`).once('value'));
           const snapshots = await Promise.all(promises);
 
@@ -1348,6 +1380,7 @@
               delete db[rid]._cachedCount;
             }
           });
+
           await new Promise(resolve => setTimeout(resolve, 40));
         }
 
@@ -1363,11 +1396,103 @@
         updateDashboardStats();
         updateSyncIndicatorBadge();
       } catch (err) {
-        console.warn("Lỗi đồng bộ:", err);
+        console.warn("Lỗi syncAllRoomsInBackground:", err);
       } finally {
         isSyncingAllRooms = false;
       }
     }
+
+    // ==================== LƯU LỊCH SỬ BÁO CÁO THEO NGÀY ====================
+    function saveDailyReportSnapshot(report) {
+      if (!report || !report.date) return;
+      const key = report.date;
+      const previous = dailyReports[key];
+      const signature = JSON.stringify(report);
+      if (previous && previous._signature === signature) return;
+      dailyReports[key] = { ...report, _signature: signature, updatedAt: Date.now() };
+      persistLocalState();
+
+      clearTimeout(dailyReportWriteTimer);
+      dailyReportWriteTimer = setTimeout(() => {
+        if (!window.firestoreDb || !navigator.onLine) return;
+        window.firestoreDb.ref(`dailyReports/${key}`).set(dailyReports[key]).catch(err => {
+          console.warn('Không lưu được báo cáo ngày:', err);
+        });
+      }, 500);
+    }
+
+    function buildHistoricalReport(dateISO) {
+      const allActive = [];
+      const allRetired = Array.isArray(retiredList) ? retiredList : [];
+      Object.values(db).forEach(r => (r.workers || []).forEach(w => allActive.push({ ...w, room: r.id })));
+
+      const toISO = (v) => {
+        if (!v) return '';
+        const s = String(v).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        const m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+        return m ? `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}` : '';
+      };
+      const entered = allActive.filter(w => toISO(w.joinDate) === dateISO).length + allRetired.filter(w => toISO(w.joinDate) === dateISO).length;
+      const retired = allRetired.filter(w => toISO(w.retireDate || w.leaveDate) === dateISO).length;
+      const persons = [];
+      allActive.forEach(w => {
+        const join = toISO(w.joinDate);
+        const leave = toISO(w.leaveDate);
+        if (join && join <= dateISO && (!leave || leave > dateISO)) persons.push(w);
+      });
+      allRetired.forEach(w => {
+        const join = toISO(w.joinDate), leave = toISO(w.retireDate || w.leaveDate);
+        if (join && join <= dateISO && (!leave || leave > dateISO)) persons.push(w);
+      });
+      const male = persons.filter(w => w.gender !== 'Nữ').length;
+      const female = persons.filter(w => w.gender === 'Nữ').length;
+      const total = persons.length;
+      const usableRooms = Object.values(db).filter(r => !r.isLocked);
+      const roomCounts = Object.values(db).map(r => Array.isArray(r.workers) ? r.workers.length : (r._cachedCount || 0));
+      const availableRooms = usableRooms.filter(r => (Array.isArray(r.workers) ? r.workers.length : (r._cachedCount || 0)) < CAPACITY).length;
+      const fullRooms = usableRooms.filter(r => (Array.isArray(r.workers) ? r.workers.length : (r._cachedCount || 0)) >= CAPACITY).length;
+      const dirtyCount = Object.values(db).filter(r => (r.damageReport || []).includes('Phòng bẩn / Chưa dọn')).length;
+      const modifiedRooms = Object.values(db).filter(r => r.isModified).length;
+      return {
+        date: dateISO, occupancy: Object.keys(db).length ? Math.round((total / (Object.keys(db).length * CAPACITY)) * 100) : 0,
+        total, capacity: Object.keys(db).length * CAPACITY, enteredToday: entered, retiredToday: retired,
+        diffToday: entered - retired, male, female, availableRooms, fullRooms, dirtyCount, modifiedRooms,
+        roomCount: Object.keys(db).length
+      };
+    }
+
+    function dateRangeISO(startISO, endISO) {
+      const out = [];
+      if (!startISO || !endISO) return out;
+      const d = new Date(`${startISO}T00:00:00`), end = new Date(`${endISO}T00:00:00`);
+      while (d <= end) { out.push(getLocalDateISO(d)); d.setDate(d.getDate() + 1); }
+      return out;
+    }
+
+    function buildAllDailyReports() {
+      const dates = new Set(Object.keys(dailyReports));
+      const allDates = [];
+      Object.values(db).forEach(r => (r.workers || []).forEach(w => { if (w.joinDate) allDates.push(normalizeLeaveDate(String(w.joinDate))); }));
+      (retiredList || []).forEach(w => { if (w.joinDate) allDates.push(normalizeLeaveDate(String(w.joinDate))); });
+      const start = allDates.filter(Boolean).sort()[0] || getLocalDateISO();
+      dateRangeISO(start, getLocalDateISO()).forEach(d => dates.add(d));
+      dates.add(getLocalDateISO());
+      const result = {};
+      Array.from(dates).sort().forEach(d => {
+        result[d] = dailyReports[d] ? { ...dailyReports[d] } : buildHistoricalReport(d);
+        delete result[d]._signature;
+      });
+      return result;
+    }
+
+      window.firestoreDb.ref('dailyReports').on('value', (snapshot) => {
+        const remote = snapshot.val() || {};
+        if (remote && typeof remote === 'object') {
+          dailyReports = { ...dailyReports, ...remote };
+          persistLocalState();
+        }
+      });
 
     function recordLog(action, detail) {
       const logItem = {
@@ -1387,6 +1512,41 @@
 
     function initGranularFirebase() {
       if (!window.firestoreDb) return;
+
+      window.firestoreDb.ref('metadata/lastResetTime').on('value', async (snap) => {
+        const resetTime = snap.val() || 0;
+        const localLastReset = (await idbGet('localLastResetTime')) || 0;
+
+        if (resetTime > localLastReset) {
+          await idbSet('localLastResetTime', resetTime);
+          lastSyncTimestamp = resetTime;
+
+          Object.keys(db).forEach(rid => {
+            if (db[rid]) {
+              db[rid].workers = [];
+              db[rid].damageReport = [];
+              db[rid].isModified = false;
+              db[rid].customNote = "";
+              delete db[rid]._cachedCount;
+            }
+          });
+          retiredList = [];
+          dailyReports = {};
+          syncQueue = [];
+
+          await Promise.all([
+            idbSet('db', db),
+            idbSet('retiredList', retiredList),
+            idbSet('dailyReports', dailyReports),
+            idbSet('syncQueue', syncQueue),
+            idbSet('lastSyncTimestamp', lastSyncTimestamp)
+          ]);
+
+          renderRooms();
+          updateDashboardStats();
+          if (curRoomId) renderWorkersInRoom();
+        }
+      });
 
       window.firestoreDb.ref('metadata/rooms_summary').on('value', (snapshot) => {
         const summaries = snapshot.val() || {};
@@ -1411,12 +1571,21 @@
           }
         });
         
-        renderRooms();
+        const currentSearchVal = document.getElementById('mainSearch')?.value.trim();
+        if (!currentSearchVal) renderRooms();
         updateDashboardStats();
         updateSyncIndicatorBadge();
 
         if (needsWorkerSync && !isSyncingAllRooms) {
           syncAllRoomsInBackground();
+        }
+      });
+
+      window.firestoreDb.ref('logs').limitToLast(50).on('child_added', (snapshot) => {
+        const item = snapshot.val();
+        if (item && !logs.some(l => l.time === item.time && l.action === item.action && l.detail === item.detail)) {
+          logs.unshift(item);
+          if (logs.length > 500) logs.pop();
         }
       });
 
@@ -1427,6 +1596,9 @@
     function renderRooms(matchedIds = null) {
       const grid = document.getElementById('roomGrid');
       if (!grid) return;
+      if (typeof isAudioNotifyEnabled !== 'undefined' && isAudioNotifyEnabled) {
+        playNotifyBeep(880, 0.2);
+      }
       const khu = document.getElementById('selKhu')?.value || 'ALL';
       const status = document.getElementById('selRoomStatusFilter')?.value || 'ALL';
       const matchedSet = matchedIds ? new Set(matchedIds) : null;
@@ -1512,6 +1684,10 @@
     }
 
     function saveQuickRoomNote() {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') {
+        alert("Thiết bị chưa được duyệt quyền chỉnh sửa!");
+        return;
+      }
       const noteText = document.getElementById('txtQuickRoomNote').value.trim();
       if (activeLongPressRoomId && db[activeLongPressRoomId]) {
         db[activeLongPressRoomId].customNote = noteText;
@@ -1525,6 +1701,10 @@
     }
 
     function clearQuickRoomNote() {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') {
+        alert("Thiết bị chưa được duyệt quyền chỉnh sửa!");
+        return;
+      }
       if (activeLongPressRoomId && db[activeLongPressRoomId]) {
         db[activeLongPressRoomId].customNote = "";
         db[activeLongPressRoomId].updatedAt = Date.now();
@@ -1551,21 +1731,34 @@
 
       const today = getLocalDateISO();
       const isToday = (value) => {
-        if (!value) return false;
-        const raw = String(value).trim().split(/[ T]/)[0];
-        if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)) {
-          const [y, m, d] = raw.split('-');
+        if (value === null || value === undefined || value === '') return false;
+        if (typeof value === 'number' || (/^\d{10,13}$/.test(String(value).trim()))) {
+          const n = Number(value);
+          if (!Number.isFinite(n)) return false;
+          const ms = String(value).trim().length === 10 ? n * 1000 : n;
+          return getLocalDateISO(new Date(ms)) === today;
+        }
+
+        const raw = String(value).trim();
+        if (!raw) return false;
+        const datePart = raw.split(/[ T]/)[0];
+
+        if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(datePart)) {
+          const [y, m, d] = datePart.split('-');
           return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}` === today;
         }
-        const m = raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+
+        const m = datePart.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
         if (m) {
           return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}` === today;
         }
+
         return false;
       };
 
       rooms.forEach(r => {
         if ((r.damageReport || []).includes('Phòng bẩn / Chưa dọn')) dirtyCount++;
+
         const hasWorkers = Array.isArray(r.workers) && r.workers.length > 0;
         const count = hasWorkers ? r.workers.length : (r._cachedCount || 0);
         total += count;
@@ -1594,6 +1787,12 @@
         isToday(w.retireDate || w.leaveDate || w.ngayNghi || w.retiredDate || w.date || w.ngayRa || w.checkOutDate)
       ).length;
 
+      const enteredAndRetiredToday = (Array.isArray(retiredList) ? retiredList : []).filter(w =>
+        isToday(w.joinDate || w.entryDate) &&
+        isToday(w.retireDate || w.leaveDate || w.ngayNghi || w.retiredDate || w.date || w.ngayRa || w.checkOutDate)
+      ).length;
+      enteredToday += enteredAndRetiredToday;
+
       const occupancy = rooms.length ? Math.round((total / (rooms.length * CAPACITY)) * 100) : 0;
       const diffToday = enteredToday - retiredToday;
 
@@ -1608,6 +1807,7 @@
       setText('statRetiredToday', retiredToday > 0 ? `-${retiredToday}` : retiredToday);
       setText('statDirty', dirtyCount);
 
+      // Cập nhật ô hiển thị Biến Động Hôm Nay
       const diffEl = document.getElementById('statDiffToday');
       if (diffEl) {
         if (diffToday > 0) {
@@ -1620,6 +1820,7 @@
           diffEl.textContent = "0";
           diffEl.style.color = "#64748b";
         }
+        diffEl.title = `Vào hôm nay: ${enteredToday} | Nghỉ hôm nay: ${retiredToday}`;
       }
 
       const genderEl = document.getElementById('statGender');
@@ -1629,6 +1830,8 @@
       if (roomStatusEl) roomStatusEl.innerHTML = `${availableRooms}/<span style="color:var(--red);font-weight:bold;">${fullRooms}</span>`;
 
       setText('statMod', modifiedRooms);
+
+      saveDailyReportSnapshot({ date: today, occupancy, total, capacity: rooms.length * CAPACITY, enteredToday, retiredToday, diffToday, male, female, availableRooms, fullRooms, dirtyCount, modifiedRooms, roomCount: rooms.length });
     }
 
     // ==================== 8. LAZY LOAD CHI TIẾT PHÒNG ====================
@@ -1637,7 +1840,7 @@
       curRoomId = roomId;
       const room = db[roomId];
 
-      document.getElementById('roomModalTitle').textContent = `${room.id} (${room.area}) - ${room.workers.length}/${CAPACITY}`;
+      document.getElementById('roomModalTitle').textContent = `${room.id} (${room.area}) - Đang kiểm tra...`;
       const lockBtn = document.getElementById('btnLock');
       lockBtn.textContent = room.isLocked ? '🔓 Mở phòng' : '🔒 Khóa làm kho';
       updateDamageTagButtons();
@@ -1645,6 +1848,28 @@
       
       document.getElementById('roomInputContainer').style.display = 'none';
       openModal('roomModal');
+
+      if (currentRoomRef) currentRoomRef.off();
+
+      if (window.firestoreDb) {
+        currentRoomRef = window.firestoreDb.ref(`rooms/${roomId}/workers`);
+        currentRoomRef.on('value', (snap) => {
+          const remoteWorkers = snap.val();
+          if (Array.isArray(remoteWorkers)) {
+            db[roomId].workers = remoteWorkers;
+            db[roomId].workers.forEach(normalizeWorker);
+            delete db[roomId]._cachedCount;
+          } else if (remoteWorkers === null && (!db[roomId].workers || db[roomId].workers.length === 0)) {
+            db[roomId].workers = [];
+          }
+          document.getElementById('roomModalTitle').textContent = `${room.id} (${room.area}) - ${db[roomId].workers.length}/${CAPACITY}`;
+          renderWorkersInRoom();
+          persistLocalState();
+          updateDashboardStats();
+        });
+      } else {
+        document.getElementById('roomModalTitle').textContent = `${room.id} (${room.area}) - ${db[roomId].workers.length}/${CAPACITY}`;
+      }
     }
 
     function toggleWorkerForm() {
@@ -1664,6 +1889,8 @@
         return;
       }
 
+      const isAuthorized = (currentUserRole === 'staff' || currentUserRole === 'admin');
+
       tbody.innerHTML = room.workers.map((w, idx) => {
         const att = w.attendanceHistory?.[date];
         let badge = '<span class="att-badge att-none">-</span>';
@@ -1673,25 +1900,29 @@
         return `
           <tr>
             <td>${escapeHtml(w.empId || '-')}</td>
-            <td><b class="${w.gender === 'Nữ' ? 'female-row' : ''}" ondblclick="editWorkerName(${idx})" title="Nhấp đúp để sửa">${escapeHtml(w.name)}</b></td>
+            <td><b class="${w.gender === 'Nữ' ? 'female-row' : ''}" ondblclick="${isAuthorized ? `editWorkerName(${idx})` : ''}" title="Nhấp đúp để sửa">${escapeHtml(w.name)}</b></td>
             <td>${escapeHtml(maskCccdNumber(w.idCard))}</td>
             <td>${escapeHtml(w.address || '-')}</td>
             <td>
               <div class="att-box">
                 ${badge}
-                <button class="btn-att-action btn-att-yes" onclick="setWorkerAtt(${idx},true)">+ Có</button>
-                <button class="btn-att-action btn-att-no" onclick="setWorkerAtt(${idx},false)">- Vắng</button>
-                <button class="btn-att-action btn-att-reset" onclick="setWorkerAtt(${idx},null)">↺</button>
+                <button ${!isAuthorized ? 'disabled' : ''} class="btn-att-action btn-att-yes" onclick="setWorkerAtt(${idx},true)">+ Có</button>
+                <button ${!isAuthorized ? 'disabled' : ''} class="btn-att-action btn-att-no" onclick="setWorkerAtt(${idx},false)">- Vắng</button>
+                <button ${!isAuthorized ? 'disabled' : ''} class="btn-att-action btn-att-reset" onclick="setWorkerAtt(${idx},null)">↺</button>
               </div>
             </td>
-            <td><span ondblclick="editWorkerNote(${idx})" style="cursor:pointer;">${escapeHtml(w.note || '-')}</span></td>
-            <td><button class="btn" style="background:#0284c7;color:#fff;padding:4px 8px;font-weight:bold;" onclick="openImmediateTransferTab(${idx})">Chuyển</button></td>
-            <td><button class="btn" style="background:#dc2626;color:#fff;padding:4px 8px;" onclick="confirmRetireWorker(${idx})">Nghỉ</button></td>
+            <td><span ondblclick="${isAuthorized ? `editWorkerNote(${idx})` : ''}" style="cursor:pointer;">${escapeHtml(w.note || '-')}</span></td>
+            <td><button ${!isAuthorized ? 'disabled' : ''} class="btn" style="background:#0284c7;color:#fff;padding:4px 8px;font-weight:bold;" onclick="openImmediateTransferTab(${idx})">Chuyển</button></td>
+            <td><button ${!isAuthorized ? 'disabled' : ''} class="btn" style="background:#dc2626;color:#fff;padding:4px 8px;" onclick="confirmRetireWorker(${idx})">Nghỉ</button></td>
           </tr>`;
       }).join('');
     }
 
     async function addWorkerDirect() {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') {
+        alert("Thiết bị chưa được duyệt quyền thêm công nhân!");
+        return;
+      }
       const room = db[curRoomId];
       if (!room) return alert("Không xác định được phòng!");
       const name = document.getElementById('rName').value.trim();
@@ -1713,12 +1944,57 @@
         updatedAt: Date.now()
       };
 
-      if (room.workers.length >= CAPACITY) return alert("Phòng đã đủ 20 công nhân!");
-      room.workers.push(newWorker);
-      room.isModified = true;
-      room.updatedAt = Date.now();
-      
-      syncSingleRoom(curRoomId);
+      let saved = false;
+      if (window.firestoreDb && navigator.onLine) {
+        try {
+          const ref = window.firestoreDb.ref(`rooms/${curRoomId}/workers`);
+          const result = await ref.transaction((remoteWorkers) => {
+            const list = Array.isArray(remoteWorkers) ? remoteWorkers : [];
+            if (list.length >= CAPACITY) return;
+            if (list.some(w => normalizeIdCard(w?.idCard) === idCard)) return;
+            list.push(newWorker);
+            return list;
+          });
+          saved = !!result.committed;
+          if (saved) {
+            db[curRoomId].workers = Array.isArray(result.snapshot.val()) ? result.snapshot.val() : [];
+            db[curRoomId].workers.forEach(normalizeWorker);
+            db[curRoomId]._knownWorkerKeys = db[curRoomId].workers.map(workerKey).filter(Boolean);
+            delete db[curRoomId]._cachedCount;
+            await window.firestoreDb.ref(`metadata/rooms_summary/${curRoomId}`).update({
+              count: db[curRoomId].workers.length,
+              isLocked: !!db[curRoomId].isLocked,
+              damage: db[curRoomId].damageReport || [],
+              isMod: true,
+              customNote: db[curRoomId].customNote || "",
+              updatedAt: firebase.database.ServerValue.TIMESTAMP
+            });
+          }
+        } catch (e) {
+          console.warn('Lỗi thêm công nhân online:', e);
+        }
+      } else {
+        if (room.workers.length >= CAPACITY) return alert("Phòng đã đủ 20 công nhân!");
+        room.workers.push(newWorker);
+        room.isModified = true;
+        room.updatedAt = Date.now();
+        enqueueRoomSync(curRoomId);
+        saved = true;
+      }
+
+      if (!saved) {
+        const fresh = await (window.firestoreDb && navigator.onLine ? window.firestoreDb.ref(`rooms/${curRoomId}/workers`).once('value') : Promise.resolve(null));
+        const current = fresh ? (fresh.val() || []) : room.workers;
+        if (current.some(w => normalizeIdCard(w?.idCard) === idCard)) {
+          alert("Công nhân/CCCD vừa được cán bộ khác thêm vào. Không thêm trùng.");
+        } else if (current.length >= CAPACITY) {
+          alert("Phòng vừa đủ 20 công nhân. Vui lòng chọn phòng khác.");
+        } else {
+          alert("Không thể thêm công nhân do lỗi đồng bộ. Vui lòng thử lại.");
+        }
+        return;
+      }
+
       recordLog("Thêm trực tiếp", `Thêm ${name} vào ${curRoomId}`);
       persistLocalState();
       renderWorkersInRoom();
@@ -1730,6 +2006,7 @@
     }
 
     function setWorkerAtt(idx, status) {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return alert("Bạn không có quyền điểm danh!");
       const date = document.getElementById('attendanceDateInput').value || getLocalDateISO();
       const room = db[curRoomId];
       if (!room || !room.workers[idx]) return;
@@ -1751,6 +2028,7 @@
     }
 
     function batchSetAttendance(status) {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return alert("Bạn không có quyền điểm danh!");
       const date = document.getElementById('attendanceDateInput').value || getLocalDateISO();
       const room = db[curRoomId];
       if (!room) return;
@@ -1771,6 +2049,7 @@
     }
 
     function batchClearAttendance() {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return alert("Bạn không có quyền thao tác!");
       const date = document.getElementById('attendanceDateInput').value || getLocalDateISO();
       const room = db[curRoomId];
       if (!room) return;
@@ -1788,6 +2067,7 @@
     }
 
     function toggleDamageTag(tag) {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return alert("Bạn không có quyền thao tác!");
       const room = db[curRoomId];
       if (!room) return;
       room.damageReport = room.damageReport || [];
@@ -1826,6 +2106,7 @@
     }
 
     function toggleLockRoom() {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return alert("Bạn không có quyền thao tác!");
       const room = db[curRoomId];
       if (!room) return;
       if (room.workers.length > 0 && !room.isLocked) return alert("Chỉ có thể khóa khi phòng trống!");
@@ -1838,6 +2119,7 @@
     }
 
     function confirmRetireWorker(idx) {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return alert("Bạn không có quyền cho nghỉ việc!");
       const worker = db[curRoomId].workers[idx];
       if (!confirm(`XÁC NHẬN NGHỈ VIỆC: ${worker.name}?`)) return;
       const removed = db[curRoomId].workers.splice(idx, 1)[0];
@@ -1847,6 +2129,7 @@
         empId: removed.empId || "-",
         name: removed.name,
         idCard: removed.idCard,
+        gender: removed.gender || 'Nam',
         room: curRoomId,
         joinDate: removed.joinDate || "",
         retireDate: retireDateStr
@@ -1865,6 +2148,7 @@
     }
 
     function editWorkerName(idx) {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return;
       const room = db[curRoomId], worker = room?.workers?.[idx];
       if (!worker) return;
       document.getElementById('editWorkerIdx').value = idx;
@@ -1883,6 +2167,7 @@
     }
 
     function saveWorkerAllEdit() {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return alert("Bạn không có quyền sửa!");
       const room = db[curRoomId];
       const idx = Number(document.getElementById('editWorkerIdx').value);
       const worker = room?.workers?.[idx];
@@ -1890,6 +2175,8 @@
       const name = document.getElementById('eName').value.trim();
       const idCard = normalizeIdCard(document.getElementById('eIdCard').value);
       if (!name || !idCard) return alert('Họ tên và CCCD không được để trống.');
+      const duplicateRoom = isIdCardDuplicate(idCard);
+      if (duplicateRoom && !(normalizeIdCard(worker.idCard) === idCard)) return alert(`CCCD đã tồn tại tại ${duplicateRoom}.`);
 
       worker.empId = document.getElementById('eEmpId').value.trim();
       worker.name = name;
@@ -1915,6 +2202,7 @@
     }
 
     function editWorkerNote(idx) {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return;
       const room = db[curRoomId], worker = room?.workers?.[idx];
       if (!worker) return;
       const next = prompt('Sửa GHI CHÚ:', worker.note || '');
@@ -1931,11 +2219,13 @@
 
     // ==================== 9. ĐIỀU CHUYỂN PHÒNG ====================
     function openImmediateTransferTab(idx) {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') return alert("Bạn không có quyền điều chuyển!");
       const room = db[curRoomId];
       if (!room || !room.workers[idx]) return;
 
       transferringWorkerIdx = idx;
       const worker = room.workers[idx];
+      
       document.getElementById('transferWorkerName').innerText = `${worker.name} (${worker.empId || '-'})`;
       document.getElementById('transferCurrentRoom').innerText = curRoomId;
       
@@ -1983,15 +2273,47 @@
       delete db[targetId]._cachedCount;
       db[curRoomId].isModified = true;
       db[targetId].isModified = true;
-
-      syncSingleRoom(curRoomId);
-      syncSingleRoom(targetId);
+      db[curRoomId].updatedAt = Date.now();
+      db[targetId].updatedAt = Date.now();
 
       recordLog("Điều chuyển", `Chuyển ${worker.name} từ ${curRoomId} sang ${targetId}`);
+
       persistLocalState();
       closeModal('transferModal');
       renderWorkersInRoom();
       renderRooms();
+
+      if (navigator.onLine && window.firestoreDb) {
+        const multiUpdates = {};
+        multiUpdates[`rooms/${curRoomId}/workers`] = db[curRoomId].workers;
+        multiUpdates[`metadata/rooms_summary/${curRoomId}`] = {
+          count: db[curRoomId].workers.length,
+          isLocked: db[curRoomId].isLocked,
+          damage: db[curRoomId].damageReport || [],
+          isMod: true,
+          customNote: db[curRoomId].customNote || "",
+          updatedAt: firebase.database.ServerValue.TIMESTAMP
+        };
+        multiUpdates[`rooms/${targetId}/workers`] = db[targetId].workers;
+        multiUpdates[`metadata/rooms_summary/${targetId}`] = {
+          count: db[targetId].workers.length,
+          isLocked: db[targetId].isLocked,
+          damage: db[targetId].damageReport || [],
+          isMod: true,
+          customNote: db[targetId].customNote || "",
+          updatedAt: firebase.database.ServerValue.TIMESTAMP
+        };
+        try {
+          await window.firestoreDb.ref().update(multiUpdates);
+        } catch (e) {
+          enqueueRoomSync(curRoomId);
+          enqueueRoomSync(targetId);
+        }
+      } else {
+        enqueueRoomSync(curRoomId);
+        enqueueRoomSync(targetId);
+      }
+
       alert(`Đã chuyển thành công ${worker.name} sang phòng ${targetId}!`);
     }
 
@@ -2049,6 +2371,54 @@
       return ['nu', 'female', 'f'].includes(n) ? 'Nữ' : 'Nam';
     }
 
+    async function appendWorkersAtomic(roomId, workers) {
+      if (!window.firestoreDb || !navigator.onLine) {
+        if (!db[roomId]) return 0;
+        const room = db[roomId];
+        let added = 0;
+        for (const w of workers) {
+          if (room.workers.length >= CAPACITY) break;
+          if (isIdCardDuplicate(w.idCard)) continue;
+          room.workers.push(w);
+          added++;
+        }
+        return added;
+      }
+
+      const ref = window.firestoreDb.ref(`rooms/${roomId}/workers`);
+      let addedCount = 0;
+      const result = await ref.transaction((remoteWorkers) => {
+        const list = Array.isArray(remoteWorkers) ? remoteWorkers.slice() : [];
+        const keys = new Set(list.map(workerKey).filter(Boolean));
+        addedCount = 0;
+        for (const w of workers) {
+          const key = workerKey(w);
+          if (!key || keys.has(key) || list.length >= CAPACITY) continue;
+          list.push(w);
+          keys.add(key);
+          addedCount++;
+        }
+        return list;
+      });
+
+      if (!result.committed) return 0;
+      const finalWorkers = Array.isArray(result.snapshot.val()) ? result.snapshot.val() : [];
+      finalWorkers.forEach(normalizeWorker);
+      db[roomId].workers = finalWorkers;
+      db[roomId]._knownWorkerKeys = finalWorkers.map(workerKey).filter(Boolean);
+      delete db[roomId]._cachedCount;
+
+      await window.firestoreDb.ref(`metadata/rooms_summary/${roomId}`).update({
+        count: finalWorkers.length,
+        isLocked: !!db[roomId].isLocked,
+        damage: db[roomId].damageReport || [],
+        isMod: true,
+        customNote: db[roomId].customNote || "",
+        updatedAt: firebase.database.ServerValue.TIMESTAMP
+      });
+      return addedCount;
+    }
+
     async function allocateWorkersFromExcel(rawRows) {
       const mode = document.getElementById('importModeSelect').value;
       const targetRow = parseInt(document.getElementById('importRowSelect').value);
@@ -2065,6 +2435,9 @@
 
       let count = 0, rIdx = 0;
       const today = getTodayVN();
+      const touchedRooms = new Set();
+      const workersByRoom = new Map();
+      const encounteredInBatch = new Set();
 
       rawRows.forEach((row, rowIdx) => {
         let mapped = {};
@@ -2094,12 +2467,33 @@
           });
         }
 
-        if ((idCard.length === 12 || idCard.length === 9) && !isIdCardDuplicate(idCard)) {
+        if ((idCard.length === 12 || idCard.length === 9) && !encounteredInBatch.has(idCard) && !isIdCardDuplicate(idCard)) {
+          encounteredInBatch.add(idCard);
           if (!name) name = `CÔNG NHÂN ${rowIdx + 1}`;
 
           let targetRoom = null;
-          while (rIdx < candidateRooms.length && candidateRooms[rIdx].workers.length >= CAPACITY) rIdx++;
-          targetRoom = candidateRooms[rIdx];
+          const excelRoomRaw = String(mapped['phong'] || mapped['phongso'] || mapped['phongoday'] || mapped['phongday'] || '');
+          const excelRowRaw = mapped['day'] ?? mapped['dayso'] ?? '';
+          const excelRoomRowRaw = String(mapped['dayphong'] || mapped['phongday'] || '').trim();
+
+          if (!targetRoom && excelRoomRowRaw) {
+            const nr = excelRoomRowRaw.toUpperCase().replace(/\s+/g,'');
+            const roomMatch = nr.match(/D\d+-P\d+/);
+            if (roomMatch) targetRoom = db[roomMatch[0]];
+          }
+          if (excelRoomRaw) {
+            const normalizedRoom = excelRoomRaw.toUpperCase().replace(/\s+/g,'');
+            const roomPart = normalizedRoom.split('-DÃY')[0].split('-DAY')[0];
+            targetRoom = db[normalizedRoom] || db[roomPart] || Object.values(db).find(r => r.id.toUpperCase() === normalizedRoom || r.id.toUpperCase() === roomPart || String(r.no) === normalizedRoom);
+          }
+          if (!targetRoom && excelRowRaw !== '') {
+            const rowNo = parseInt(String(excelRowRaw).replace(/\D/g,''));
+            if (rowNo) targetRoom = Object.values(db).find(r => r.row === rowNo && !r.isLocked && r.workers.length < CAPACITY);
+          }
+          if (!targetRoom) {
+            while (rIdx < candidateRooms.length && candidateRooms[rIdx].workers.length >= CAPACITY) rIdx++;
+            targetRoom = candidateRooms[rIdx];
+          }
 
           if (targetRoom && targetRoom.workers.length < CAPACITY && !targetRoom.isLocked) {
             const newWorker = {
@@ -2116,18 +2510,35 @@
               leaveDate: normalizeDateString(mapped['ngaynghi'] || mapped['ngaynghiviec'] || ''),
               updatedAt: Date.now()
             };
+            if (!workersByRoom.has(targetRoom.id)) workersByRoom.set(targetRoom.id, []);
+            workersByRoom.get(targetRoom.id).push(newWorker);
             targetRoom.workers.push(newWorker);
             targetRoom.isModified = true;
-            syncSingleRoom(targetRoom.id);
+            targetRoom.updatedAt = Date.now();
+            delete targetRoom._cachedCount;
+            touchedRooms.add(targetRoom.id);
             count++;
           }
         }
       });
 
-      recordLog("Nhập Excel", `Tiếp nhận ${count} công nhân`);
+      let savedCount = 0;
+      if (workersByRoom.size > 0) {
+        if (window.firestoreDb && navigator.onLine) {
+          for (const [rid, list] of workersByRoom.entries()) {
+            const added = await appendWorkersAtomic(rid, list);
+            savedCount += added;
+          }
+        } else {
+          savedCount = count;
+          touchedRooms.forEach(rid => enqueueRoomSync(rid));
+        }
+      }
+
+      recordLog("Nhập Excel", `Tiếp nhận ${savedCount} công nhân`);
       persistLocalState();
       renderRooms();
-      alert(`ĐÃ NẠP THÀNH CÔNG: Đã tiếp nhận ${count} công nhân!`);
+      alert(`ĐÃ NẠP THÀNH CÔNG: Đã tiếp nhận ${savedCount} công nhân. Các dòng thiếu CCCD hợp lệ, trùng hoặc phòng vừa đầy đã được bỏ qua.`);
     }
 
     // ==================== 11. CAMERA QUÉT MÃ QR ====================
@@ -2143,17 +2554,37 @@
       closeCameraStream();
       msg.innerText = "Đang kích hoạt camera...";
 
+      const constraints = {
+        audio: false,
+        video: {
+          facingMode: { ideal: currentCameraFacing },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          focusMode: { ideal: "continuous" }
+        }
+      };
+
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: currentCameraFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }
-        });
+        localStream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = localStream;
         await video.play();
         isScanning = true;
-        msg.innerText = "Đặt mã QR vào ô vuông xanh";
+        msg.innerText = "Đặt mã QR vào ô vuông xanh (tự động nhận)";
         scanVideoFrame();
-      } catch (e) {
-        msg.innerText = "Không mở được camera. Dùng 'Tải Ảnh CCCD'.";
+      } catch (err) {
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: { facingMode: { ideal: currentCameraFacing } }
+          });
+          video.srcObject = localStream;
+          await video.play();
+          isScanning = true;
+          msg.innerText = "Hướng ô vuông xanh vào mã QR";
+          scanVideoFrame();
+        } catch (e) {
+          msg.innerText = "Không mở được camera. Dùng 'Tải Ảnh CCCD'.";
+        }
       }
     }
 
@@ -2168,17 +2599,23 @@
         if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0) {
           const vW = video.videoWidth, vH = video.videoHeight;
           const boxSize = Math.round(Math.min(vW, vH) * 0.65);
+          const startX = Math.round((vW - boxSize) / 2);
+          const startY = Math.round((vH - boxSize) / 2);
+
           canvas.width = boxSize;
           canvas.height = boxSize;
           const ctx = canvas.getContext('2d', { willReadFrequently: true });
-          ctx.drawImage(video, (vW - boxSize)/2, (vH - boxSize)/2, boxSize, boxSize, 0, 0, boxSize, boxSize);
+          ctx.drawImage(video, startX, startY, boxSize, boxSize, 0, 0, boxSize, boxSize);
 
           try {
             const imageData = ctx.getImageData(0, 0, boxSize, boxSize);
-            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
             if (code?.data) {
               isScanning = false;
+              if (navigator.vibrate) navigator.vibrate(80);
               parseCccdData(code.data);
+              const status = document.getElementById('camStatusMsg');
+              if (status) status.innerText = "Đã nhận dạng mã QR thành công!";
               return;
             }
           } catch (e) {}
@@ -2195,7 +2632,9 @@
 
     function closeCameraStream() {
       isScanning = false;
-      if (scanTimer) clearTimeout(scanTimer);
+      if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
+      const video = document.getElementById('camVideo');
+      if (video) video.srcObject = null;
       if (localStream) {
         localStream.getTracks().forEach(t => t.stop());
         localStream = null;
@@ -2208,32 +2647,62 @@
     }
 
     function parseCccdData(rawText) {
-      const parts = String(rawText || '').replace(/^\uFEFF/, '').trim().split('|');
-      if (parts.length < 5) return alert("Không nhận diện được định dạng CCCD.");
+      const raw = String(rawText ?? '').replace(/^\uFEFF/, '').trim();
+      const parts = raw.split('|').map(v => String(v ?? '').trim());
+      if (parts.length < 5) return alert("Không nhận diện được định dạng CCCD: " + raw);
       const cardNo = normalizeIdCard(parts[0]);
+      if (![9, 12].includes(cardNo.length)) return alert("Số CCCD đọc được không hợp lệ: " + parts[0]);
+
+      const normalizeGenderVal = v => /^(nữ|nu|female|f)$/i.test(String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()) ? 'Nữ' : 'Nam';
+      const looksLikeDate = v => /^\d{6,8}$/.test(String(v).replace(/\D/g, ''));
+
+      let name, dob, gender, address;
+      if (parts.length >= 7 && !looksLikeDate(parts[1]) && !/^(nam|nu|nữ|male|female)$/i.test(parts[1])) {
+        name = parts[2]; dob = parts[3]; gender = parts[4]; address = parts[5];
+      } else {
+        name = parts[1]; dob = parts[2]; gender = parts[3]; address = parts[4];
+      }
+
       document.getElementById('gIdCard').value = cardNo;
-      document.getElementById('gName').value = parts[2] || parts[1] || '';
-      document.getElementById('gDob').value = normalizeDateString(parts[3] || parts[2] || '');
-      document.getElementById('gGender').value = /nu|nữ/i.test(parts[4] || '') ? 'Nữ' : 'Nam';
-      document.getElementById('gAddress').value = parts[5] || parts[4] || '';
-      alert("Đã nhận diện: " + (parts[2] || parts[1]));
+      document.getElementById('gName').value = name || '';
+      document.getElementById('gDob').value = normalizeDateString(dob);
+      document.getElementById('gGender').value = normalizeGenderVal(gender);
+      document.getElementById('gAddress').value = address || '';
+      alert(name ? "Đã nhận diện: " + name : "Đã nhận dạng thẻ.");
     }
 
     function handleFileCCCDQuick(input) {
       if (!input.files || !input.files.length) return;
       const file = input.files[0];
       const reader = new FileReader();
+      const msg = document.getElementById('camStatusMsg');
+      if (msg) msg.innerText = "Đang xử lý ảnh CCCD từ tệp...";
+
       reader.onload = function(e) {
         const img = new Image();
         img.onload = function() {
           const canvas = document.getElementById('qrCanvas');
-          canvas.width = img.width; canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0);
-          const imgData = ctx.getImageData(0, 0, img.width, img.height);
-          const code = jsQR(imgData.data, imgData.width, imgData.height);
-          if (code && code.data) parseCccdData(code.data);
-          else alert("Không tìm thấy mã QR trên tệp ảnh.");
+          const maxDim = 1200;
+          let w = img.width, h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+            else { w = Math.round((w * maxDim) / h); h = maxDim; }
+          }
+
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0, w, h);
+          
+          let imgData = ctx.getImageData(0, 0, w, h);
+          let code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "attemptBoth" });
+          
+          if (code && code.data) {
+            if (msg) msg.innerText = "Đã nhận dạng ảnh CCCD thành công!";
+            parseCccdData(code.data);
+          } else {
+            if (msg) msg.innerText = "Không tìm thấy mã QR trên ảnh.";
+            alert("Không tìm thấy mã QR trên tệp ảnh. Vui lòng chọn ảnh chụp rõ nét!");
+          }
         };
         img.src = e.target.result;
       };
@@ -2242,6 +2711,10 @@
     }
 
     async function saveQuickScanWorker() {
+      if (currentUserRole !== 'staff' && currentUserRole !== 'admin') {
+        alert("Thiết bị chưa được duyệt quyền lưu công nhân!");
+        return;
+      }
       const rid = document.getElementById('gTargetRoom').value;
       if (!rid || !db[rid]) return alert("Chưa chọn phòng!");
       const name = document.getElementById('gName').value.trim();
@@ -2263,12 +2736,43 @@
         updatedAt: Date.now()
       };
 
-      const room = db[rid];
-      if (room.workers.length >= CAPACITY) return alert("Phòng đã đầy!");
-      room.workers.push(newWorker);
-      room.isModified = true;
-      syncSingleRoom(rid);
-      
+      let saved = false;
+      if (window.firestoreDb && navigator.onLine) {
+        try {
+          const result = await window.firestoreDb.ref(`rooms/${rid}/workers`).transaction((remoteWorkers) => {
+            const list = Array.isArray(remoteWorkers) ? remoteWorkers : [];
+            if (list.length >= CAPACITY) return;
+            if (list.some(w => normalizeIdCard(w?.idCard) === idCard)) return;
+            list.push(newWorker);
+            return list;
+          });
+          saved = !!result.committed;
+          if (saved) {
+            db[rid].workers = Array.isArray(result.snapshot.val()) ? result.snapshot.val() : [];
+            db[rid].workers.forEach(normalizeWorker);
+            db[rid]._knownWorkerKeys = db[rid].workers.map(workerKey).filter(Boolean);
+            await window.firestoreDb.ref(`metadata/rooms_summary/${rid}`).update({
+              count: db[rid].workers.length,
+              isLocked: !!db[rid].isLocked,
+              damage: db[rid].damageReport || [],
+              isMod: true,
+              customNote: db[rid].customNote || "",
+              updatedAt: firebase.database.ServerValue.TIMESTAMP
+            });
+          }
+        } catch (e) {
+          console.warn('Lỗi lưu CCCD online:', e);
+        }
+      } else {
+        const room = db[rid];
+        if (room.workers.length >= CAPACITY) return alert("Phòng đã đầy!");
+        room.workers.push(newWorker);
+        room.isModified = true;
+        enqueueRoomSync(rid);
+        saved = true;
+      }
+
+      if (!saved) return alert("Không thể lưu công nhân. Phòng có thể vừa đầy hoặc CCCD vừa được cán bộ khác thêm.");
       recordLog("Thêm nhanh", `Thêm ${name} vào ${rid}`);
       persistLocalState();
       renderRooms();
@@ -2308,32 +2812,39 @@
     }
 
     function exportSyncFile() {
-      const syncData = JSON.stringify({ db, logs, retiredList, timestamp: new Date().toISOString() });
+      const syncData = JSON.stringify({ db, logs, retiredList, dailyReports, timestamp: new Date().toISOString() });
       const blob = new Blob([syncData], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
+      a.href = url;
       a.download = `DongBo_LangVan_${new Date().toISOString().slice(0,10)}.json`;
       a.click();
+      recordLog("Xuất đồng bộ", "Tạo file gói đồng bộ");
     }
 
     function importSyncFile(e) {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = function(evt) {
+      reader.onload = async function(evt) {
         try {
           const imported = JSON.parse(evt.target.result);
-          if (imported.db) {
+          if (imported.db && typeof imported.db === 'object') {
             db = imported.db;
-            logs = imported.logs || [];
-            retiredList = imported.retiredList || [];
+            logs = Array.isArray(imported.logs) ? imported.logs : [];
+            retiredList = Array.isArray(imported.retiredList) ? imported.retiredList : [];
+            dailyReports = (imported.dailyReports && typeof imported.dailyReports === 'object') ? imported.dailyReports : {};
             normalizeDatabase();
             persistLocalState();
             renderRooms();
-            alert("Đã nạp file đồng bộ thành công!");
+            populateTargetRoomSelects();
+            recordLog("Nạp đồng bộ", "Nạp dữ liệu từ file JSON");
+            alert("Đã đồng bộ thành công!");
             closeModal('adminModal');
+          } else {
+            alert("File đồng bộ không hợp lệ.");
           }
-        } catch(err) { alert("Lỗi: " + err.message); }
+        } catch(err) { alert("Lỗi đọc file: " + err.message); }
       };
       reader.readAsText(file);
     }
@@ -2351,7 +2862,14 @@
       Object.values(db).forEach(r => {
         if (r.damageReport && r.damageReport.length > 0) {
           const cleanReport = r.damageReport.map(item => item === 'Phòng bẩn / Chưa dọn' ? `<span style="color:#d97706; font-weight:bold;">🧹 ${item}</span>` : `<span style="color:red; font-weight:bold;">🛠 ${item}</span>`).join(', ');
-          rows += `<tr><td><b>${r.id}</b></td><td>${r.area}</td><td>${cleanReport}</td><td><button onclick="fixRoomDamage('${r.id}')" class="btn" style="background:#16a34a; color:white; font-size:0.65rem; padding:2px 5px;">Đã Xử Lý Xong</button></td></tr>`;
+          rows += `<tr>
+            <td><b>${r.id}</b></td>
+            <td>${r.area}</td>
+            <td>${cleanReport}</td>
+            <td>
+              <button onclick="fixRoomDamage('${r.id}')" class="btn" style="background:#16a34a; color:white; font-size:0.65rem; padding:2px 5px;">Đã Xử Lý Xong</button>
+            </td>
+          </tr>`;
         }
       });
       tbody.innerHTML = rows || `<tr><td colspan="4" style="text-align:center; color:#16a34a; font-weight:bold;">Tất cả phòng đều sạch sẽ và hoạt động tốt!</td></tr>`;
@@ -2362,18 +2880,479 @@
       if (db[roomId]) {
         db[roomId].damageReport = [];
         db[roomId].isModified = true;
+        db[roomId].updatedAt = Date.now();
+        recordLog("Xử lý phòng", `Hoàn tất dọn dẹp/sửa chữa tại ${roomId}`);
         syncSingleRoom(roomId);
         openDamageReportSummary();
         renderRooms();
+        alert(`Đã hoàn tất xử lý tại ${roomId}!`);
       }
     }
 
     async function adminClearAll() {
       if (!confirm("CẢNH BÁO: Bạn có chắc chắn muốn xóa sạch toàn bộ dữ liệu?")) return;
-      localStorage.clear();
-      db = {}; logs = []; retiredList = []; syncQueue = [];
+      if (!confirm("Thao tác này KHÔNG THỂ HOÀN TÁC. Tiếp tục?")) return;
+
+      const resetTimestamp = Date.now();
+      db = {}; 
+      logs = []; 
+      retiredList = []; 
+      dailyReports = {};
+      syncQueue = []; 
+      lastSyncTimestamp = resetTimestamp;
+
       normalizeDatabase();
       persistLocalState();
+      persistSyncQueue();
+      await idbSet('localLastResetTime', resetTimestamp);
+
+      if (navigator.onLine && typeof firebase !== 'undefined' && firebase.database) {
+        try {
+          const dbRef = firebase.database();
+          await Promise.all([
+            dbRef.ref('rooms').set({}),
+            dbRef.ref('retired').set({}),
+            dbRef.ref('dailyReports').set({}),
+            dbRef.ref('logs').set({}),
+            dbRef.ref('auditLogs').set({}),
+            dbRef.ref('metadata/rooms_summary').set({})
+          ]);
+          await dbRef.ref('metadata/lastResetTime').set(firebase.database.ServerValue.TIMESTAMP);
+        } catch (err) {
+          console.error("Lỗi khi xóa trắng dữ liệu máy chủ:", err);
+        }
+      }
+
+      if (typeof localStorage !== 'undefined') localStorage.clear();
+      if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
+
       renderRooms();
+      populateTargetRoomSelects();
       closeModal('adminModal');
-      alert
+      alert("Đã làm sạch toàn bộ dữ liệu và biến động phòng!");
+      location.reload();
+    }
+
+    function populateRowSelects() {
+      const sel1 = document.getElementById('importRowSelect');
+      const sel2 = document.getElementById('transferRowSelect');
+      if (sel1) sel1.innerHTML = "";
+      if (sel2) sel2.innerHTML = "";
+      for (let r = 1; r <= TOTAL_ROWS; r++) {
+        let area = getAreaByRow(r);
+        let opt1 = document.createElement('option');
+        opt1.value = r; opt1.innerText = `Dãy ${r} (${area})`;
+        if (sel1) sel1.appendChild(opt1);
+        let opt2 = opt1.cloneNode(true);
+        if (sel2) sel2.appendChild(opt2);
+      }
+    }
+
+    function populateTargetRoomSelects() {
+      const gTarget = document.getElementById('gTargetRoom');
+      const start = document.getElementById('importRoomStartSelect');
+      if (gTarget) gTarget.innerHTML = "";
+      if (start) start.innerHTML = "";
+
+      Object.values(db).forEach(r => {
+        const count = (r.workers && r.workers.length > 0) ? r.workers.length : (r._cachedCount || 0);
+        if (!r.isLocked && count < CAPACITY) {
+          const opt = document.createElement('option');
+          opt.value = r.id;
+          opt.innerText = `${r.id} (${r.area} - Còn ${CAPACITY - count} chỗ)`;
+          if (gTarget) gTarget.appendChild(opt);
+          if (start) start.appendChild(opt.cloneNode(true));
+        }
+      });
+    }
+
+    function isIdCardDuplicate(idCard) {
+      const clean = normalizeIdCard(idCard);
+      for (let r of Object.values(db)) {
+        if (r.workers && r.workers.some(w => normalizeIdCard(w.idCard) === clean)) return r.id;
+      }
+      return false;
+    }
+
+    function downloadExcelTemplate() {
+      const headers = ['Mã NV','Họ và Tên','CCCD','Giới Tính','Ngày Sinh','SĐT','Địa Chỉ','Ghi Chú','Ngày Vào','Ngày Nghỉ Việc','Dãy Phòng'];
+      const example = [['NV001','NGUYỄN VĂN A','012345678901','Nam','01/01/1995','0900000000','Đà Nẵng','Ghi chú mẫu','01/10/2026','','D1-P01 - Dãy 1']];
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...example]);
+      ws['!cols'] = headers.map(h => ({wch: Math.max(12, h.length + 3)}));
+      ws['C2'] = { t: 's', v: '012345678901' };
+      ws['F2'] = { t: 's', v: '0900000000' };
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'MauNhapCongNhan');
+      XLSX.writeFile(wb, 'Mau_Excel_Nhap_Cong_Nhan_LangVan.xlsx');
+    }
+
+    async function exportDataExcel() {
+      if (typeof ExcelJS === 'undefined') {
+        alert('Không tải được thư viện Excel nâng cao. Vui lòng kiểm tra kết nối Internet rồi thử lại.');
+        return;
+      }
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'Lán trại Làng Vân';
+      wb.created = new Date();
+      wb.modified = new Date();
+
+      // 1. DANH SÁCH CÔNG NHÂN — giữ nguyên cấu trúc xuất hiện tại
+      const ws = wb.addWorksheet('CongNhan', { views: [{ state: 'frozen', ySplit: 1 }] });
+      const headers = ['Mã NV','Họ và Tên','CCCD','Giới Tính','Ngày Sinh','SĐT','Địa Chỉ','Ghi Chú','Ngày Vào','Ngày Nghỉ Việc','Dãy Phòng'];
+      ws.addRow(headers);
+      Object.values(db).forEach(r => (r.workers || []).forEach(w => ws.addRow([
+        w.empId || '', w.name || '', maskCccdNumber(w.idCard), w.gender || '', w.dob || '', w.phone || '', w.address || '', w.note || '',
+        w.joinDate || '', w.leaveDate ? (w.leaveDate.includes('-') ? w.leaveDate.split('-').reverse().join('/') : w.leaveDate) : '', `${r.id} - Dãy ${r.row}`
+      ])));
+      ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } };
+      ws.autoFilter = { from: 'A1', to: `K${Math.max(1, ws.rowCount)}` };
+      ws.columns.forEach((c, i) => { c.width = [12,24,18,12,14,15,28,28,14,17,22][i] || 15; });
+
+      // 2. NGHỈ VIỆC
+      if (Array.isArray(retiredList) && retiredList.length > 0) {
+        const rw = wb.addWorksheet('DanhSachNghiViec', { views: [{ state: 'frozen', ySplit: 1 }] });
+        rw.addRow(['STT','Mã NV','Họ và Tên','CCCD','Giới Tính','Phòng Cũ','Ngày Vào','Ngày Nghỉ Việc','Lý Do']);
+        retiredList.forEach((w, idx) => rw.addRow([idx + 1, w.empId || w.id || '', w.name || w.fullName || '', maskCccdNumber(w.idCard || w.cccd || ''), w.gender || '', w.room || w.oldRoom || '', w.joinDate || w.checkInDate || '', w.retireDate || '', w.reason || w.note || '']));
+        rw.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        rw.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF991B1B' } };
+        rw.columns.forEach((c, i) => c.width = [7,14,24,18,12,15,14,18,30][i]);
+      }
+
+      // 3. BÁO CÁO THỐNG KÊ THEO NGÀY — dữ liệu bám theo Dashboard
+      const report = wb.addWorksheet('BaoCaoNgay');
+      report.views = [{ state: 'frozen', ySplit: 5 }];
+      report.mergeCells('A1:L1');
+      report.getCell('A1').value = 'BÁO CÁO THỐNG KÊ';
+      report.getCell('A1').font = { name: 'Arial', size: 15, bold: true, color: { argb: 'FF1E3A8A' } };
+      report.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+      report.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+      report.getRow(1).height = 26;
+      report.mergeCells('A2:L2');
+      report.getCell('A2').value = 'Lán trại Làng Vân — Tổng hợp đúng các chỉ số trên thanh Dashboard';
+      report.getCell('A2').font = { italic: true, color: { argb: 'FF64748B' } };
+      report.getCell('A2').alignment = { horizontal: 'center' };
+
+      report.getCell('A3').value = '🔎 Ngày tìm kiếm';
+      report.getCell('A3').font = { bold: true, color: { argb: 'FF1E3A8A' } };
+      report.getCell('B3').value = '';
+      report.getCell('B3').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } };
+      report.getCell('B3').border = { top:{style:'thin',color:{argb:'FFD97706'}}, left:{style:'thin',color:{argb:'FFD97706'}}, bottom:{style:'thin',color:{argb:'FFD97706'}}, right:{style:'thin',color:{argb:'FFD97706'}} };
+      report.getCell('B3').note = 'Nhập 8 số, ví dụ 06102026. Ô C3 sẽ chuẩn hóa thành 06/10/2026. Bấm biểu tượng 🔎 để nhảy tới ngày cần tìm.';
+      report.getCell('C3').value = { formula: `=IF(B3="","",IF(ISNUMBER(B3),IF(B3>100000,IFERROR(DATE(VALUE(RIGHT(TEXT(B3,"00000000"),4)),VALUE(MID(TEXT(B3,"00000000"),3,2)),VALUE(LEFT(TEXT(B3,"00000000"),2))),""),B3),IFERROR(DATE(VALUE(RIGHT(B3,4)),VALUE(MID(B3,3,2)),VALUE(LEFT(B3,2))),"")))` };
+      report.getCell('C3').numFmt = 'dd/mm/yyyy';
+      report.getCell('C3').font = { bold: true, color: { argb: 'FF0F766E' } };
+      report.getCell('D3').value = { formula: `=IF(C3="","",IFERROR(HYPERLINK("#'BaoCaoNgay'!A"&(MATCH(C3,$A$6:$A$${Math.max(6, Object.keys(buildAllDailyReports()).length + 5)},0)+5),"🔎 ĐI TỚI NGÀY"),"Không tìm thấy"))` };
+      report.getCell('D3').font = { bold: true, color: { argb: 'FF2563EB' }, underline: 'single' };
+
+      const reportHeaders = ['Ngày','Hiệu Suất','Tổng Quân Số','Vào Hôm Nay','Nghỉ Trong Ngày','Biến Động Hôm Nay','Nam / Nữ','Trống / Đầy (Đỏ)','Cần Dọn Dẹp','Biến Động Phòng','Sức Chứa','Ghi Chú'];
+      report.getRow(5).values = reportHeaders;
+      report.getRow(5).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      report.getRow(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+      report.getRow(5).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+
+      const daily = buildAllDailyReports();
+      const reportDates = Object.keys(daily).sort();
+      reportDates.forEach((dateISO, idx) => {
+        const r = daily[dateISO];
+        const excelDate = new Date(`${dateISO}T00:00:00`);
+        const row = report.addRow([
+          excelDate, `${Number(r.occupancy || 0)}%`, `${r.total || 0}/${r.capacity || (r.roomCount || 0) * CAPACITY}`,
+          r.enteredToday || 0, r.retiredToday || 0, r.diffToday || 0, `${r.male || 0}/${r.female || 0}`,
+          `${r.availableRooms || 0}/${r.fullRooms || 0}`, r.dirtyCount || 0, r.modifiedRooms || 0, r.capacity || 0, ''
+        ]);
+        row.getCell(1).numFmt = 'dd/mm/yyyy';
+        row.getCell(6).font = { bold: true, color: { argb: (r.diffToday || 0) < 0 ? 'FFDC2626' : 'FF16A34A' } };
+        row.getCell(7).font = { bold: true };
+        row.getCell(8).font = { bold: true };
+        row.getCell(9).font = { bold: true, color: { argb: 'FFD97706' } };
+        row.getCell(10).font = { bold: true, color: { argb: 'FFDB2777' } };
+      });
+
+      report.autoFilter = { from: 'A5', to: `L${Math.max(5, report.rowCount)}` };
+      report.columns = [
+        { width: 14 }, { width: 12 }, { width: 16 }, { width: 14 }, { width: 16 }, { width: 20 },
+        { width: 12 }, { width: 19 }, { width: 15 }, { width: 17 }, { width: 12 }, { width: 28 }
+      ];
+      report.eachRow((row, rowNumber) => {
+        if (rowNumber >= 6) {
+          row.alignment = { vertical: 'middle', horizontal: 'center' };
+          if (rowNumber % 2 === 0) row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        }
+        row.border = { bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } } };
+      });
+      // Tô vàng tự động dòng có ngày trùng với ô C3.
+      if (report.rowCount >= 6) {
+        report.addConditionalFormatting({
+          ref: `A6:L${report.rowCount}`,
+          rules: [{ type: 'expression', formulae: ['$A6=$C$3'], style: { fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }, font: { bold: true } } }]
+        });
+      }
+      report.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+      report.headerFooter = { oddFooter: 'Lán trại Làng Vân | BÁO CÁO THỐNG KÊ | Trang &P/&N' };
+      report.printTitlesRow = '5:5';
+      report.getCell('A3').note = 'Nhập 06102026 → C3 hiển thị 06/10/2026. Sau đó bấm 🔎 ĐI TỚI NGÀY. Dòng trùng ngày sẽ tự tô vàng.';
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `LangVan_DanhSach_${new Date().toISOString().slice(0,10)}.xlsx`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      recordLog('Xuất Excel', 'Xuất danh sách + danh sách nghỉ việc + báo cáo thống kê tất cả ngày');
+    }
+
+    function exportAuditLogsExcel() {
+      if (!logs || logs.length === 0) return alert("Chưa có nhật ký lưu vết nào để xuất!");
+      const rows = logs.map((l, idx) => ({
+        'STT': idx + 1,
+        'Thời Gian': l.time,
+        'Người Thực Hiện': l.user,
+        'Hành Động': l.action,
+        'Chi Tiết Thay Đổi': l.detail
+      }));
+      const headers = ['STT', 'Thời Gian', 'Người Thực Hiện', 'Hành Động', 'Chi Tiết Thay Đổi'];
+      const ws = XLSX.utils.json_to_sheet(rows, {header: headers});
+      ws['!cols'] = [{wch: 6}, {wch: 22}, {wch: 30}, {wch: 20}, {wch: 45}];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'NhatKyLuuVet');
+      XLSX.writeFile(wb, `LangVan_NhatKy_${new Date().toISOString().slice(0,10)}.xlsx`);
+    }
+
+    function adminExportBackupExcel() { exportDataExcel(); }
+
+    function removeVietnameseTones(str) {
+      if (!str) return "";
+      str = String(str).toLowerCase();
+      str = str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return str.replace(/[đĐ]/g, 'd').trim();
+    }
+
+    async function handleSearch(rawVal) {
+      clearTimeout(searchDebounceTimer);
+      const val = removeVietnameseTones(rawVal);
+      if (!val) { 
+        renderRooms(); 
+        return; 
+      }
+
+      searchDebounceTimer = setTimeout(async () => {
+        if (window.firestoreDb && !isRemoteRoomsFetched && navigator.onLine) {
+          const syncInd = document.getElementById('syncIndicator');
+          if (syncInd) syncInd.innerText = "🔍 Đang tìm 5 khu...";
+          try {
+            await syncAllRoomsInBackground();
+          } catch (e) {}
+        }
+
+        const matched = [];
+        Object.values(db).forEach(r => {
+          const hasWorker = (r.workers || []).some(w => {
+            const normName = removeVietnameseTones(w.name);
+            const normCccd = String(w.idCard || '').trim();
+            const normEmpId = removeVietnameseTones(w.empId);
+            const normPhone = String(w.phone || '').trim();
+            const normAddr = removeVietnameseTones(w.address);
+
+            return normName.includes(val) ||
+                   normCccd.includes(val) ||
+                   normEmpId.includes(val) ||
+                   normPhone.includes(val) ||
+                   normAddr.includes(val);
+          });
+
+          const normRoomId = removeVietnameseTones(r.id);
+          const normRoomNote = removeVietnameseTones(r.customNote || '');
+          if (hasWorker || normRoomId.includes(val) || normRoomNote.includes(val)) {
+            matched.push(r.id);
+          }
+        });
+
+        renderRooms(matched);
+      }, 250);
+    }
+
+    function triggerPrintRoomList() {
+      const r = db[curRoomId];
+      if (!r) return;
+      document.getElementById('printRoomTitle').innerText = `DANH SÁCH CÔNG NHÂN PHÒNG: ${r.id} (${r.area.toUpperCase()})`;
+      document.getElementById('printMeta').innerText = `Ngày in: ${new Date().toLocaleDateString('vi-VN')} | Tổng: ${r.workers.length}/20`;
+      const tbody = document.getElementById('printTableBody');
+      tbody.innerHTML = r.workers.length === 0 ? `<tr><td colspan="7" style="text-align:center; padding:12px;">Phòng hiện đang trống.</td></tr>` :
+        r.workers.map((w, idx) => `<tr><td style="text-align:center; border:1px solid #000; padding:6px;">${idx+1}</td><td style="border:1px solid #000; padding:6px;"><b>${escapeHtml(w.name)}</b></td><td style="border:1px solid #000; padding:6px;">${escapeHtml(w.empId||'-')}</td><td style="border:1px solid #000; padding:6px;">${escapeHtml(maskCccdNumber(w.idCard))}</td><td style="text-align:center; border:1px solid #000; padding:6px;">${r.id}</td><td style="border:1px solid #000; padding:6px;">${escapeHtml(w.address||'-')}</td><td style="border:1px solid #000; padding:6px;"></td></tr>`).join('');
+      const printBox = document.getElementById('printableArea');
+      printBox.style.display = 'block';
+      window.print();
+      printBox.style.display = 'none';
+    }
+
+    function escapeHtml(v) {
+      return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function openModal(id) {
+      const modal = document.getElementById(id);
+      if (modal) {
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
+      }
+    }
+
+    function closeModal(id) { 
+      if (id === 'roomModal' && currentRoomRef) {
+        currentRoomRef.off();
+        currentRoomRef = null;
+      }
+      const modal = document.getElementById(id);
+      if (modal) modal.style.display = 'none';
+      const anyOpen = Array.from(document.querySelectorAll('.modal')).some(m => m.style.display === 'flex');
+      if (!anyOpen) document.body.classList.remove('modal-open');
+    }
+
+    function applyDateMask(input) {
+      let v = input.value.replace(/\D/g, '').slice(0, 8);
+      if (v.length >= 5) input.value = `${v.slice(0,2)}/${v.slice(2,4)}/${v.slice(4)}`;
+      else if (v.length >= 3) input.value = `${v.slice(0,2)}/${v.slice(2)}`;
+      else input.value = v;
+    }
+
+    function normalizeDateString(raw) {
+      if (!raw) return "";
+      if (raw instanceof Date && !isNaN(raw)) {
+        return `${String(raw.getDate()).padStart(2,'0')}/${String(raw.getMonth()+1).padStart(2,'0')}/${raw.getFullYear()}`;
+      }
+      const text = String(raw).trim(), clean = text.replace(/\D/g, '');
+      if (clean.length === 8) {
+        if (/^(19|20)\d{6}$/.test(clean)) return `${clean.slice(6,8)}/${clean.slice(4,6)}/${clean.slice(0,4)}`;
+        return `${clean.slice(0,2)}/${clean.slice(2,4)}/${clean.slice(4,8)}`;
+      }
+      return text;
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && isScanning) closeCameraStream();
+    });
+
+    // ==================== 13. KHỞI TẠO MẠNG VÀ HỆ THỐNG ====================
+    window.addEventListener('online', async () => {
+      updateSyncIndicatorBadge();
+      await flushSyncQueue();
+      syncAllRoomsInBackground();
+    });
+
+    window.addEventListener('offline', () => {
+      updateSyncIndicatorBadge();
+    });
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      await loadDatabaseAsync();
+      await loadSyncQueue();
+      renderRooms();
+
+      setInterval(() => {
+        if (navigator.onLine && syncQueue.length > 0) flushSyncQueue();
+      }, 15000);
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyCSog106dSblz9QhElKmeZLlEJn0UyjWUs",
+        authDomain: "quanlilantrailangvan.firebaseapp.com",
+        databaseURL: "https://quanlilantrailangvan-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "quanlilantrailangvan",
+        storageBucket: "quanlilantrailangvan.firebasestorage.app",
+        messagingSenderId: "753332379273",
+        appId: "1:753332379273:web:de0dce0bd5806047fb3058"
+      };
+
+      try {
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        window.firestoreDb = firebase.database();
+        window.firebaseAuth = firebase.auth();
+
+        const indicator = document.getElementById('syncIndicator');
+        if (indicator) indicator.innerText = "🟡 Đang xác thực...";
+
+        await window.firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+
+        window.firebaseAuth.onAuthStateChanged(async (user) => {
+          const proceedInit = async (uid) => {
+            initDeviceIdentity(uid);
+            initGranularFirebase();
+            await flushSyncQueue();
+            syncAllRoomsInBackground();
+          };
+
+          if (user) {
+            await proceedInit(user.uid);
+          } else {
+            try {
+              const cred = await window.firebaseAuth.signInAnonymously();
+              await proceedInit(cred.user.uid);
+            } catch (authErr) {
+              console.error("Lỗi đăng nhập ẩn danh:", authErr);
+              if (indicator) indicator.innerText = "🔴 Lỗi xác thực máy";
+            }
+          }
+        });
+
+      } catch (err) {
+        console.warn("Chạy ở chế độ ngoại tuyến:", err);
+        updateSyncIndicatorBadge();
+      }
+
+      if ('serviceWorker' in navigator && location.protocol === 'https:') {
+        navigator.serviceWorker.register('./langvan-sw.js').catch(err => console.warn('PWA:', err));
+      }
+    });
+
+    // ==================== HỆ THỐNG ÂM THANH & BÁO CHUÔNG ====================
+    let isAudioNotifyEnabled = false;
+    let audioCtx = null;
+
+    function toggleAudioNotify() {
+      isAudioNotifyEnabled = !isAudioNotifyEnabled;
+      const btn = document.getElementById('btnAudioNotify');
+      
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      if (btn) {
+        if (isAudioNotifyEnabled) {
+          btn.innerHTML = '🔔 Đang Bật Chuông';
+          btn.style.background = '#16a34a';
+          playNotifyBeep(880, 0.15);
+        } else {
+          btn.innerHTML = '🔔 Bật Nhận Chuông';
+          btn.style.background = '#0284c7';
+        }
+      }
+    }
+
+    function playNotifyBeep(freq = 660, duration = 0.2) {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {
+        console.warn("Lỗi phát âm thanh:", e);
+      }
+    }
+  </script>
+</body>
+</html>
