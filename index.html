@@ -3,6 +3,2595 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Lán Trại Làng Vân - Quản Lý 7000 Công Nhân</title>
+  <meta name="theme-color" content="#1e3a8a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Làng Vân">
+  <link rel="manifest" href="langvan-manifest.json">
+  <!-- Thư viện SheetJS & jsQR -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <!-- Firebase SDK v8 -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <style>
+    :root {
+      --bg: #ffffff;
+      --primary: #1d4ed8;
+      --navy: #1e3a8a;
+      --border: #cbd5e1;
+      --red: #dc2626;
+      --green: #16a34a;
+      --pink-dark: #db2777;
+      --gray-lock: #475569;
+      --warning-amber: #d97706;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { background: var(--bg); color: #0f172a; padding: 6px 12px; font-size: 12px; }
+
+    header { 
+      display: flex; justify-content: space-between; align-items: center; 
+      background: #ffffff; padding: 10px 0 8px 0; border-bottom: 3px double #cbd5e1; margin-bottom: 8px; 
+    }
+    .brand-title { 
+      display: flex; align-items: center; gap: 8px; 
+      font-size: 1.35rem; font-weight: 900; color: var(--navy); 
+      letter-spacing: 0.5px;
+    }
+    .brand-title .icon-camp { font-size: 1.8rem; }
+    .brand-title span.capacity-info { font-size: 0.75rem; color: #64748b; font-weight: 600; margin-left: 4px; }
+
+    .role-bar {
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px;
+      background: #f1f5f9; padding: 5px 8px; border-radius: 4px; margin-bottom: 6px;
+      font-size: 0.68rem; border-left: 3.5px solid #0284c7;
+    }
+    .btn-rename-device {
+      background: #e2e8f0; border: 1px solid #cbd5e1; padding: 2px 6px; border-radius: 3px;
+      cursor: pointer; font-size: 0.62rem; font-weight: 600; color: #334155;
+    }
+
+    .dashboard-container { display: flex; justify-content: flex-start; margin-bottom: 6px; overflow-x: auto; }
+    .compact-dashboard { display: inline-flex; gap: 4px; }
+    .kpi-chip { background: #f8fafc; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--border); text-align: center; white-space: nowrap; }
+    .kpi-chip .lbl { font-size: 0.58rem; color: #64748b; text-transform: uppercase; font-weight: 600; }
+    .kpi-chip .val { font-size: 0.78rem; font-weight: 700; margin-top: 1px; }
+
+    .toolbar-container { display: flex; justify-content: flex-start; margin-bottom: 8px; }
+    .compact-toolbar { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; background: #f8fafc; padding: 5px 8px; border-radius: 5px; border: 1px solid var(--border); }
+    .compact-toolbar input, .compact-toolbar select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.75rem; }
+    .compact-toolbar input#mainSearch { width: 170px; }
+
+    .btn { padding: 5px 10px; border-radius: 4px; border: none; font-size: 0.75rem; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+    .btn-scan { background: var(--green); color: white; }
+    .btn-import { background: #d97706; color: white; }
+    .btn-export { background: #334155; color: white; }
+    .btn[disabled] { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+
+    .room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 5px; min-height: 420px; }
+    .room-card { 
+      padding: 6px 7px; border-radius: 5px; border: 1.5px solid #cbd5e1; cursor: pointer; 
+      position: relative; background: #ffffff; transition: transform 0.1s; user-select: none;
+    }
+    .room-card:active { transform: scale(0.98); }
+    
+    .status-white { background: #ffffff; border-color: #cbd5e1; }
+    .status-occupied { background: #f0fdf4; border-color: #86efac; color: #166534; }
+    .status-occupied .room-title { color: #16a34a !important; font-weight: 800; }
+    .status-pink { background: #ecfdf5; border-color: #16a34a; color: #166534; }
+    .status-pink .room-title { color: #15803d !important; font-weight: 800; }
+    .status-full { background: #fef2f2; border-color: var(--red); color: #991b1b; }
+    .status-full .room-title { color: var(--red) !important; font-weight: 800; }
+    .status-lock { background: var(--gray-lock); color: #ffffff; border-color: #334155; }
+
+    .female-row { color: var(--red) !important; font-weight: bold; }
+    .badge-tag { font-size: 0.62rem; padding: 1px 4px; border-radius: 3px; background: #e2e8f0; }
+
+    .room-absent-alert { background: #fee2e2; color: #dc2626; border: 1px solid #f87171; border-radius: 3px; padding: 1px 3px; font-size: 0.62rem; font-weight: bold; margin-top: 3px; }
+    .room-dirty-alert { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; border-radius: 3px; padding: 1px 3px; font-size: 0.62rem; font-weight: bold; margin-top: 3px; }
+    .room-custom-note { background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; font-weight: bold; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .fault-tags-container { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+    .tag-btn { padding: 3px 7px; font-size: 0.68rem; border-radius: 3px; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer; }
+    .tag-btn.active { background: #ef4444; border-color: #b91c1c; color: white; font-weight: bold; }
+    .tag-btn-warning.active { background: #d97706 !important; border-color: #b45309 !important; color: white !important; font-weight: bold; }
+
+    .modal { 
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); 
+      z-index: 9999 !important; justify-content: center; align-items: center; padding: 8px; 
+    }
+    #transferModal, #roomNoteModal { z-index: 10001 !important; background: rgba(15, 23, 42, 0.85) !important; }
+
+    .modal-content { 
+      background: white; border-radius: 6px; max-width: 680px; width: 100%; 
+      max-height: 94vh; overflow-y: auto; padding: 12px; -webkit-overflow-scrolling: touch; 
+    }
+    
+    .form-row { display: flex; gap: 6px; margin-bottom: 6px; }
+    .form-row .col { flex: 1; }
+    .form-row label { display: block; font-size: 0.68rem; font-weight: 700; margin-bottom: 2px; color: #334155; }
+    .form-row input, .form-row select, .form-row textarea { width: 100%; padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.8rem; }
+
+    .table-container { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 6px; border: 1px solid var(--border); border-radius: 4px; }
+    table.data-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+    table.data-table th, table.data-table td { border: 1px solid var(--border); padding: 5px 4px; text-align: left; vertical-align: middle; }
+    table.data-table th { background: #f1f5f9; white-space: nowrap; }
+
+    .att-box { display: flex; align-items: center; gap: 3px; flex-wrap: nowrap; }
+    .att-badge { padding: 2px 5px; border-radius: 3px; font-size: 0.65rem; font-weight: bold; border: 1px solid var(--border); display: inline-block; white-space: nowrap; }
+    .att-none { background: #f1f5f9; color: #64748b; }
+    .att-present { background: #dcfce7; color: #166534; border-color: #86efac; }
+    .att-absent { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+
+    .btn-att-action { padding: 2px 5px; border-radius: 3px; border: none; font-size: 0.65rem; cursor: pointer; font-weight: bold; color: white; }
+    .btn-att-yes { background: #16a34a; }
+    .btn-att-no { background: #dc2626; }
+    .btn-att-reset { background: #94a3b8; }
+
+    .admin-feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; }
+
+    .camera-wrapper { 
+      position: relative; width: 100%; height: 260px; max-height: 38dvh; 
+      background: #000; border-radius: 8px; overflow: hidden; 
+      display: flex; justify-content: center; align-items: center; 
+    }
+    #camVideo { width: 100%; height: 100%; object-fit: cover; }
+    
+    .scan-guide-box { 
+      position: absolute; width: 170px; height: 170px; 
+      border: 3px solid #22c55e; border-radius: 12px; 
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.5); pointer-events: none; 
+      display: flex; justify-content: center; align-items: flex-end; 
+    }
+    .scan-guide-box::after {
+      content: "ĐẶT MÃ QR VÀO ĐÂY";
+      position: absolute; bottom: -24px; left: 0; right: 0;
+      color: #22c55e; font-size: 11px; font-weight: 800; text-align: center;
+      text-shadow: 0 1px 2px #000;
+    }
+
+    .mobile-quickbar { 
+      display: none; position: fixed; left: 0; right: 0; bottom: 0; 
+      z-index: 500; background: #fff; border-top: 1px solid #cbd5e1; 
+      box-shadow: 0 -3px 12px rgba(0,0,0,.12); padding: 5px 6px calc(5px + env(safe-area-inset-bottom)); gap: 5px; 
+    }
+    body.modal-open .mobile-quickbar { display: none !important; }
+
+    @media (max-width: 700px) {
+      body { padding: 4px 6px 72px; font-size: 13px; overflow-x: hidden; }
+      header { padding: 7px 2px; margin-bottom: 6px; position: sticky; top: 0; z-index: 150; }
+      .brand-title { font-size: 1rem; gap: 5px; min-width: 0; }
+      .brand-title .icon-camp { font-size: 1.45rem; }
+      .brand-title span.capacity-info { display: none; }
+      #syncIndicator { display: inline-block; font-size: .58rem !important; margin-left: 4px !important; }
+      
+      .dashboard-container { margin-bottom: 5px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .kpi-chip { min-width: 76px; padding: 4px 5px; }
+      .kpi-chip .lbl { font-size: .5rem; }
+      .kpi-chip .val { font-size: .7rem; }
+      
+      .toolbar-container { margin-bottom: 6px; }
+      .compact-toolbar { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 5px; }
+      .compact-toolbar input#mainSearch { width: 100%; grid-column: 1 / -1; min-height: 40px; font-size: .9rem; }
+      .compact-toolbar select { width: 100% !important; min-height: 38px; font-size: .8rem; }
+      .compact-toolbar .btn { min-height: 38px; justify-content: center; font-size: .78rem; }
+      
+      .room-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 5px; min-height: 300px; }
+      .room-card { min-height: 76px; padding: 7px; font-size: .75rem; }
+      
+      .modal { padding: 0; align-items: stretch; }
+      .modal-content { 
+        max-width: none !important; width: 100%; height: 100dvh; max-height: 100dvh; 
+        border-radius: 0; padding: 10px 10px 60px 10px !important; 
+        overflow-y: auto !important; -webkit-overflow-scrolling: touch; 
+      }
+      #transferModal .modal-content, #roomNoteModal .modal-content {
+        height: auto !important; max-height: 90vh !important;
+        margin: auto; border-radius: 8px !important;
+        width: 92% !important; padding: 16px !important;
+      }
+      
+      .form-row { flex-direction: column; gap: 5px; }
+      .form-row input, .form-row select, .form-row textarea { min-height: 38px; font-size: 15px; }
+      .btn { min-height: 38px; padding: 8px 10px; font-size: .78rem; }
+      
+      .mobile-quickbar { display: flex; }
+      .mobile-quickbar button { flex: 1; min-height: 48px; border: 0; border-radius: 8px; font-weight: 800; font-size: .72rem; color: #fff; }
+      .mobile-quickbar .scan { background: #16a34a; }
+      .mobile-quickbar .search { background: #1d4ed8; }
+      .mobile-quickbar .import { background: #d97706; }
+      .mobile-quickbar .admin { background: #475569; }
+      
+      .camera-wrapper { height: 240px; }
+      .scan-guide-box { width: 160px; height: 160px; }
+    }
+
+    @media print {
+      body * { visibility: hidden; }
+      .no-print { display: none !important; }
+      #printableArea, #printableArea * { visibility: visible; }
+      #printableArea { position: absolute; left: 0; top: 0; width: 100%; display: block !important; padding: 15px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="mobile-quickbar no-print" id="bottomQuickBar">
+    <button class="scan" onclick="handleScanAuthClick()">📷 Quét</button>
+    <button class="search" onclick="document.getElementById('mainSearch').focus(); window.scrollTo({top:0,behavior:'smooth'});">🔎 Tìm</button>
+    <button class="import" onclick="handleImportAuthClick()">📥 Nhập</button>
+    <button class="admin" onclick="openAdminPanelClick()">🛡 QTV</button>
+  </div>
+
+  <!-- HEADER -->
+  <header class="no-print">
+    <div class="brand-title">
+      <span class="icon-camp">🏕️</span>
+      <span>LÁN TRẠI LÀNG VÂN</span>
+      <span class="capacity-info">(350 Phòng - Sức chứa 7000)</span>
+      <span id="syncIndicator" style="font-size: 0.7rem; color: #16a34a; font-weight: normal; margin-left: 8px; cursor: pointer;" onclick="forceFullResync()" title="Bấm vào đây để ép buộc đồng bộ dữ liệu mới nhất">🟢 Đang khởi tạo...</span>
+    </div>
+    <div>
+      <button id="btnAudioNotify" onclick="toggleAudioNotify()" style="background:#0284c7;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:bold;cursor:pointer;margin-right:8px;">🔔 Bật Nhận Chuông</button>
+      <button id="btnTopAdmin" onclick="openAdminPanelClick()" class="btn" style="background:#334155; color:white; font-size:0.7rem; display:none;">🛡️ Quản Trị</button>
+    </div>
+  </header>
+
+  <!-- THANH BÁO QUYỀN VÀ TÊN CÁN BỘ -->
+  <div class="role-bar no-print" id="deviceAuthNotice">
+    <div>
+      <span>👤 Cán bộ: <b id="lblDeviceName" style="color:var(--navy);">...</b> (<span id="lblDeviceId">...</span>)</span>
+      <button class="btn-rename-device" onclick="renameCurrentDevice()">✏️ Đổi Tên</button>
+    </div>
+    <div>
+      <span>Quyền: <b id="lblUserRole" style="color:#16a34a;">Cán Bộ (Toàn quyền)</b></span>
+      <span id="lblRoleHelp" style="color:#64748b; margin-left:4px;">(Toàn quyền vận hành)</span>
+    </div>
+  </div>
+
+  <!-- THANH THỐNG KÊ (DASHBOARD) -->
+  <div class="dashboard-container no-print">
+    <div class="compact-dashboard">
+      <div class="kpi-chip"><div class="lbl">Hiệu Suất</div><div class="val" id="statOcc">0%</div></div>
+      <div class="kpi-chip"><div class="lbl">Tổng Quân Số</div><div class="val" id="statTotal">0/7000</div></div>
+      
+      <!-- Vào hôm nay -->
+      <div class="kpi-chip" style="border: 1px solid #86efac; background: #f0fdf4;">
+        <div class="lbl" style="color: #166534; font-weight: bold;">📈 Vào Hôm Nay</div>
+        <div class="val" id="statToday" style="color:var(--green); font-weight:900;">0</div>
+      </div>
+
+      <!-- Nghỉ trong ngày -->
+      <div class="kpi-chip" style="border: 1px solid #fca5a5; background: #fef2f2;">
+        <div class="lbl" style="color: #991b1b; font-weight: bold;">📉 Nghỉ Trong Ngày</div>
+        <div class="val" id="statRetiredToday" style="color:var(--red); font-weight:900;">0</div>
+      </div>
+
+      <!-- Biến động ròng trong ngày -->
+      <div class="kpi-chip" style="border: 1.5px solid #0284c7; background: #f0f9ff; min-width: 85px;">
+        <div class="lbl" style="color:#0369a1; font-weight:800;">⚡ Biến Động Hôm Nay</div>
+        <div class="val" id="statDiffToday" style="font-weight:900; font-size:0.85rem;">0</div>
+      </div>
+
+      <div class="kpi-chip"><div class="lbl">Nam / Nữ</div><div class="val" id="statGender">0/<span style="color:var(--red); font-weight:bold;">0</span></div></div>
+      <div class="kpi-chip"><div class="lbl">Trống / Đầy (Đỏ)</div><div class="val" id="statRoomStatus">350/<span style="color:var(--red); font-weight:bold;">0</span></div></div>
+      <div class="kpi-chip"><div class="lbl">🧹 Cần Dọn Dẹp</div><div class="val" id="statDirty" style="color:var(--warning-amber); font-weight:bold;">0</div></div>
+      <div class="kpi-chip"><div class="lbl">🟢 Biến Động Phòng</div><div class="val" id="statMod" style="color:var(--pink-dark); font-weight:bold;">0</div></div>
+    </div>
+  </div>
+
+  <!-- THANH CÔNG CỤ -->
+  <div class="toolbar-container no-print">
+    <div class="compact-toolbar">
+      <button class="btn btn-scan" id="btnScanTop" onclick="handleScanAuthClick()">📷 Quét CCCD</button>
+      <select id="selKhu" onchange="renderRooms()" style="width: 105px;">
+        <option value="ALL">Toàn bộ 5 Khu</option>
+        <option value="Khu A">Khu A (Dãy 1-5)</option>
+        <option value="Khu B">Khu B (Dãy 6-10)</option>
+        <option value="Khu C">Khu C (Dãy 11-15)</option>
+        <option value="Khu D">Khu D (Dãy 16-20)</option>
+        <option value="Khu E">Khu E (Dãy 21-25)</option>
+      </select>
+      <select id="selRoomStatusFilter" onchange="renderRooms()" style="width: 110px; font-weight:600;">
+        <option value="ALL">Tất cả trạng thái</option>
+        <option value="DIRTY">🧹 Phòng bẩn / Chưa dọn</option>
+        <option value="PINK">Phòng biến động (Xanh)</option>
+        <option value="FULL">Phòng đầy (Đỏ)</option>
+        <option value="AVAILABLE">Phòng còn chỗ</option>
+        <option value="DAMAGE">Phòng báo hỏng</option>
+      </select>
+      <input type="text" id="mainSearch" placeholder="Tìm tên, CCCD, Mã NV, SĐT..." oninput="handleSearch(this.value)">
+      <input type="file" id="excelFileInput" accept=".xlsx, .xls, .csv" style="display:none;" onchange="handleExcelUpload(event)">
+      <button class="btn btn-import" id="btnImportTop" onclick="handleImportAuthClick()">📥 Nhập Excel</button>
+      <button class="btn btn-export" onclick="exportDataExcel()">📤 Xuất Excel</button>
+    </div>
+  </div>
+
+  <!-- LƯỚI 350 PHÒNG -->
+  <div class="room-grid no-print" id="roomGrid"></div>
+
+  <!-- MODAL GHI CHÚ NHANH CHO PHÒNG (LONG-PRESS) -->
+  <div class="modal" id="roomNoteModal">
+    <div class="modal-content" style="max-width: 420px; border: 2.5px solid #0284c7; padding: 16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #e2e8f0; padding-bottom:6px; margin-bottom:10px;">
+        <h3 id="noteModalRoomTitle" style="font-size:1.05rem; color:#0284c7; font-weight:800;">📝 GHI CHÚ PHÒNG</h3>
+        <button onclick="closeModal('roomNoteModal')" style="padding: 4px 8px; font-weight: bold; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px;">✕ Đóng</button>
+      </div>
+      <p style="font-size:0.75rem; color:#64748b; margin-bottom:6px;">Ghi chú thông tin nội bộ (hiển thị ngay ngoài thẻ phòng):</p>
+      <textarea id="txtQuickRoomNote" rows="3" style="width:100%; padding:8px; border:1.5px solid var(--border); border-radius:4px; font-size:0.85rem;" placeholder="Ví dụ: Đội thợ cơ điện, Trưởng phòng anh Tuấn..."></textarea>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button onclick="saveQuickRoomNote()" class="btn" style="flex:2; background:#0284c7; color:white; justify-content:center; padding:10px; font-weight:bold;">💾 Lưu Ghi Chú</button>
+        <button onclick="clearQuickRoomNote()" class="btn" style="flex:1; background:#ef4444; color:white; justify-content:center; padding:10px;">Xóa</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL ĐIỀU CHUYỂN PHÒNG -->
+  <div class="modal" id="transferModal">
+    <div class="modal-content" style="max-width: 440px; border: 2.5px solid var(--primary); padding: 16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #e2e8f0; padding-bottom:6px; margin-bottom:10px;">
+        <h3 style="font-size:1.05rem; color:var(--primary); font-weight:800;">🔄 ĐIỀU CHUYỂN PHÒNG Ở</h3>
+        <button onclick="closeModal('transferModal')" style="padding: 5px 10px; font-weight: bold; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px;">✕ Đóng</button>
+      </div>
+      <div style="background:#f1f5f9; padding:10px; border-radius:6px; margin-bottom:12px; font-size:0.85rem; border-left:4px solid var(--primary);">
+        <div>Công nhân: <strong id="transferWorkerName" style="color:var(--navy); font-size:0.95rem;">...</strong></div>
+        <div style="margin-top:4px;">Phòng hiện tại: <span id="transferCurrentRoom" style="font-weight:bold; color:var(--red);"></span></div>
+      </div>
+      <div class="form-row">
+        <div class="col">
+          <label style="font-weight:bold; font-size:0.75rem; color:#334155;">1. Chọn Dãy Đích Đến:</label>
+          <select id="transferRowSelect" onchange="updateTransferRoomList()" style="padding:8px; font-weight:bold; font-size:0.85rem;"></select>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:6px;">
+        <div class="col">
+          <label style="font-weight:bold; font-size:0.75rem; color:#334155;">2. Chọn Phòng Còn Chỗ:</label>
+          <select id="transferTargetSelect" style="padding:8px; font-weight:bold; color:var(--primary); font-size:0.85rem;"></select>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:16px;">
+        <button onclick="confirmTransferWorker()" class="btn" style="flex:2; background:#16a34a; color:white; justify-content:center; padding:11px; font-size:0.85rem; font-weight:bold;">✓ Xác Nhận Chuyển</button>
+        <button onclick="closeModal('transferModal')" class="btn" style="flex:1; background:#64748b; color:white; justify-content:center; padding:11px; font-size:0.85rem;">Hủy Bỏ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL NHẬP EXCEL -->
+  <div class="modal" id="importModal">
+    <div class="modal-content" style="max-width: 520px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:5px;">
+        <h3 style="font-size:0.95rem; color:var(--navy);">📥 NHẬP FILE EXCEL CÔNG NHÂN</h3>
+        <button onclick="closeModal('importModal')" style="padding: 4px 8px; font-weight: bold;">✕ Đóng</button>
+      </div>
+      <div class="form-row" style="margin-bottom:8px;">
+        <div class="col">
+          <label style="font-weight:bold;">Chế Độ Xếp Phòng:</label>
+          <select id="importModeSelect" onchange="toggleImportTarget()" style="font-weight:bold; color:var(--primary); padding:6px;">
+            <option value="AUTO">1. Tự động lấp đầy liên tục các phòng còn trống</option>
+            <option value="TARGET_ROW">2. Chỉ nạp vào một Dãy chỉ định</option>
+            <option value="TARGET_ROOM">3. Bắt đầu nạp từ một Phòng chỉ định cụ thể</option>
+            <option value="TARGET_AREA">4. Chỉ nạp vào một Khu chỉ định (A, B, C, D, E)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row" id="importRowContainer" style="display:none; margin-bottom:8px;">
+        <div class="col"><label style="font-weight:bold;">Chọn Dãy Đích:</label><select id="importRowSelect" style="padding:6px;"></select></div>
+      </div>
+      <div class="form-row" id="importRoomContainer" style="display:none; margin-bottom:8px;">
+        <div class="col"><label style="font-weight:bold;">Bắt Đầu Từ Phòng:</label><select id="importRoomStartSelect" style="padding:6px;"></select></div>
+      </div>
+      <div class="form-row" id="importAreaContainer" style="display:none; margin-bottom:8px;">
+        <div class="col"><label style="font-weight:bold;">Chọn Khu Đích:</label>
+          <select id="importAreaSelect" style="padding:6px;">
+            <option value="Khu A">Khu A (Dãy 1-5)</option>
+            <option value="Khu B">Khu B (Dãy 6-10)</option>
+            <option value="Khu C">Khu C (Dãy 11-15)</option>
+            <option value="Khu D">Khu D (Dãy 16-20)</option>
+            <option value="Khu E">Khu E (Dãy 21-25)</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex; gap:5px; margin-top:6px;">
+        <button onclick="document.getElementById('excelFileInput').click()" class="btn btn-import" style="flex:2; justify-content:center; padding:10px; font-size:0.85rem;">
+          📂 Chọn Tệp Excel (.xlsx, .xls, .csv)
+        </button>
+        <button onclick="downloadExcelTemplate()" class="btn" style="flex:1; justify-content:center; background:#0f766e; color:white; padding:10px;">📋 Mẫu Excel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL CHI TIẾT PHÒNG -->
+  <div class="modal" id="roomModal">
+    <div class="modal-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; position: sticky; top: -10px; background: white; z-index: 10; padding: 4px 0;">
+        <h3 id="roomModalTitle" style="font-size:1rem; color:var(--navy); font-weight: 800;">Chi Tiết Phòng</h3>
+        <button onclick="closeModal('roomModal')" style="padding: 4px 10px; font-weight: bold; background: #e2e8f0; border-radius: 4px; border: none;">✕ Đóng</button>
+      </div>
+
+      <div style="display:flex; gap:4px; margin-bottom:6px; flex-wrap:wrap;">
+        <button id="btnLock" onclick="toggleLockRoom()" class="btn edit-required" style="border:1px solid var(--border); font-size:0.7rem;"></button>
+        <button onclick="batchSetAttendance(true)" class="btn edit-required" style="background:var(--green); color:white; font-size:0.7rem;">ĐỦ cả phòng</button>
+        <button onclick="batchSetAttendance(false)" class="btn edit-required" style="background:#e11d48; color:white; font-size:0.7rem;">VẮNG cả phòng</button>
+        <button onclick="batchClearAttendance()" class="btn edit-required" style="background:#64748b; color:white; font-size:0.7rem;">Đặt về Trống (-)</button>
+        <button onclick="triggerPrintRoomList()" class="btn" style="background:#0284c7; color:white; font-size:0.7rem;">🖨 In Danh Sách</button>
+      </div>
+
+      <div style="background:#fffbeb; border:1px solid #fef3c7; padding:5px; border-radius:4px; margin-bottom:6px;">
+        <div style="font-size:0.65rem; font-weight:bold; color:#b45309; margin-bottom:2px;">BÁO HỎNG CSVC & TÌNH TRẠNG VỆ SINH PHÒNG:</div>
+        <div class="fault-tags-container">
+          <button class="tag-btn tag-btn-warning edit-required" id="tag_Ban" onclick="toggleDamageTag('Phòng bẩn / Chưa dọn')" style="border-color:#f59e0b; color:#b45309;">🧹 Phòng bẩn / Chưa dọn</button>
+          <button class="tag-btn edit-required" id="tag_Quat" onclick="toggleDamageTag('Hỏng Quạt')">Hỏng Quạt</button>
+          <button class="tag-btn edit-required" id="tag_Dien" onclick="toggleDamageTag('Hỏng Điện')">Hỏng Điện</button>
+          <button class="tag-btn edit-required" id="tag_DieuHoa" onclick="toggleDamageTag('Hỏng Điều Hòa')">Hỏng Điều Hòa</button>
+          <button class="tag-btn edit-required" id="tag_OCam" onclick="toggleDamageTag('Hỏng Ổ Cắm')">Hỏng Ổ Cắm</button>
+        </div>
+      </div>
+
+      <div style="background:#f1f5f9; padding:5px 8px; border-radius:4px; margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-size:0.75rem; font-weight:bold; color:var(--navy);">Ngày điểm danh:</span>
+          <input type="date" id="attendanceDateInput" onchange="renderWorkersInRoom()" style="padding:3px 6px; font-size:0.75rem; border:1.5px solid var(--primary); border-radius:3px; font-weight:bold;">
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin: 8px 0 4px 0;">
+        <span style="font-weight:700; font-size:0.8rem; color:var(--primary);">📋 Danh sách công nhân (<span id="curRoomCount">0</span>/20):</span>
+        <button id="btnOpenAddForm" onclick="toggleWorkerForm()" class="btn edit-required" style="background:#475569; color:white; font-size:0.68rem; padding:3px 8px;">➕ Thêm Công Nhân</button>
+      </div>
+
+      <div id="roomInputContainer" style="display:none; background:#f8fafc; border:1px solid var(--border); padding:6px; border-radius:4px; margin-bottom: 8px;">
+        <div class="form-row">
+          <div class="col"><label>Mã NV</label><input type="text" id="rEmpId"></div>
+          <div class="col"><label>Họ và Tên *</label><input type="text" id="rName"></div>
+          <div class="col" style="max-width:70px;"><label>Giới Tính</label><select id="rGender"><option value="Nam">Nam</option><option value="Nữ">Nữ</option></select></div>
+        </div>
+        <div class="form-row">
+          <div class="col"><label>Số CCCD *</label><input type="text" id="rIdCard"></div>
+          <div class="col"><label>Ngày Sinh (dd/mm/yyyy)</label><input type="text" id="rDob" placeholder="dd/mm/yyyy" oninput="applyDateMask(this)"></div>
+          <div class="col"><label>Số ĐT</label><input type="text" id="rPhone"></div>
+        </div>
+        <div class="form-row">
+          <div class="col"><label>Địa Chỉ</label><input type="text" id="rAddress"></div>
+          <div class="col"><label>Ghi Chú</label><input type="text" id="rNote"></div>
+        </div>
+        <button onclick="addWorkerDirect()" class="btn" style="width:100%; background:var(--primary); color:white; justify-content:center; margin-top:3px; font-weight:bold;">Lưu Vào Phòng</button>
+      </div>
+
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Mã NV</th><th>Họ Tên</th><th>CCCD</th><th>Địa Chỉ</th><th>Điểm Danh</th><th>Ghi Chú</th><th>Chuyển</th><th>Xử Lý</th>
+            </tr>
+          </thead>
+          <tbody id="roomWorkersBody"></tbody>
+        </table>
+      </div>
+      
+      <div style="height: 50px;"></div>
+    </div>
+  </div>
+
+  <!-- MODAL SỬA TOÀN BỘ HỒ SƠ -->
+  <div class="modal" id="editWorkerModal">
+    <div class="modal-content" style="max-width:650px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:8px;">
+        <h3 style="font-size:.9rem;">✏️ Sửa toàn bộ thông tin công nhân</h3>
+        <button onclick="closeModal('editWorkerModal')" style="padding: 4px 8px; font-weight: bold;">✕ Đóng</button>
+      </div>
+      <input type="hidden" id="editWorkerIdx">
+      <div class="form-row">
+        <div class="col"><label>Mã NV</label><input id="eEmpId"></div>
+        <div class="col"><label>Họ và Tên *</label><input id="eName"></div>
+        <div class="col" style="max-width:90px"><label>Giới Tính</label><select id="eGender"><option>Nam</option><option>Nữ</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="col"><label>CCCD *</label><input id="eIdCard"></div>
+        <div class="col"><label>Ngày Sinh</label><input id="eDob" placeholder="dd/mm/yyyy"></div>
+        <div class="col"><label>SĐT</label><input id="ePhone"></div>
+      </div>
+      <div class="form-row">
+        <div class="col"><label>Địa Chỉ</label><input id="eAddress"></div>
+        <div class="col"><label>Ghi Chú</label><input id="eNote"></div>
+      </div>
+      <div class="form-row">
+        <div class="col"><label>Ngày Vào</label><input id="eJoinDate"></div>
+        <div class="col"><label>Ngày Nghỉ</label><input id="eLeaveDate" type="date"></div>
+      </div>
+      <button onclick="saveWorkerAllEdit()" class="btn" style="width:100%;background:var(--primary);color:white;justify-content:center;margin-top:5px;padding:9px;font-weight:bold;">💾 Lưu toàn bộ thông tin</button>
+      <div style="height: 30px;"></div>
+    </div>
+  </div>
+
+  <!-- MODAL QUÉT CCCD BẰNG CAMERA -->
+  <div class="modal" id="globalScanModal">
+    <div class="modal-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; position: sticky; top: -10px; background: white; z-index: 10; padding: 4px 0;">
+        <h3 style="font-size:0.95rem; font-weight: bold; color: var(--navy);">Quét Thẻ CCCD Qua Camera</h3>
+        <button onclick="closeGlobalScanner()" style="padding: 4px 10px; font-weight: bold; background: #e2e8f0; border: none; border-radius: 4px;">✕ Đóng</button>
+      </div>
+
+      <div class="camera-wrapper">
+        <video id="camVideo" playsinline autoplay muted></video>
+        <div class="scan-guide-box"></div>
+      </div>
+      <canvas id="qrCanvas" style="display:none;"></canvas>
+      <div id="camStatusMsg" style="font-size:0.75rem; color:var(--primary); font-weight:bold; margin: 6px 0; text-align:center;">Đang khởi tạo camera...</div>
+
+      <div style="display:flex; justify-content:center; gap:8px; margin:8px 0; flex-wrap:wrap;">
+        <button onclick="toggleCameraFacing()" class="btn" style="background:#4f46e5; color:white; padding: 8px 14px; font-weight:bold;">🔄 Đổi Cam</button>
+        <input type="file" id="fileCccdQuick" accept="image/*" onchange="handleFileCCCDQuick(this)" style="display:none;">
+        <button onclick="document.getElementById('fileCccdQuick').click()" class="btn" style="background:#475569; color:white; padding: 8px 14px; font-weight:bold;">🖼 Tải Ảnh CCCD</button>
+      </div>
+
+      <div style="background:#f8fafc; padding:8px; border-radius:4px; border:1px solid var(--border); margin-bottom: 20px;">
+        <div class="form-row">
+          <div class="col"><label>Phòng Chỉ Định *</label><select id="gTargetRoom"></select></div>
+          <div class="col"><label>Mã NV</label><input type="text" id="gEmpId"></div>
+        </div>
+        <div class="form-row">
+          <div class="col"><label>Họ và Tên *</label><input type="text" id="gName"></div>
+          <div class="col" style="max-width:80px;"><label>Giới Tính</label><select id="gGender"><option value="Nam">Nam</option><option value="Nữ">Nữ</option></select></div>
+        </div>
+        <div class="form-row">
+          <div class="col"><label>Số CCCD *</label><input type="text" id="gIdCard"></div>
+          <div class="col"><label>Ngày Sinh</label><input type="text" id="gDob" placeholder="dd/mm/yyyy" oninput="applyDateMask(this)"></div>
+        </div>
+        <div class="form-row">
+          <div class="col"><label>Số ĐT</label><input type="text" id="gPhone"></div>
+          <div class="col"><label>Địa Chỉ</label><input type="text" id="gAddress"></div>
+        </div>
+        <div class="form-row">
+          <div class="col"><label>📝 Ghi Chú</label><input type="text" id="gNote" placeholder="Ghi chú..."></div>
+        </div>
+        
+        <button onclick="saveQuickScanWorker()" class="btn" style="width:100%; background:var(--green); color:white; justify-content:center; padding:11px; margin-top:8px; font-weight:bold; font-size:0.85rem;">
+          ✓ Xác Nhận Lưu Vào Phòng
+        </button>
+      </div>
+      <div style="height: 50px;"></div>
+    </div>
+  </div>
+
+  <!-- MODAL QUẢN TRỊ VIÊN -->
+  <div class="modal" id="adminModal">
+    <div class="modal-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:6px;">
+        <h3 style="font-size:0.95rem; color:var(--red); display:flex; align-items:center; gap:5px;">
+          🛡️ TRANG QUẢN TRỊ VIÊN HỆ THỐNG
+        </h3>
+        <button onclick="closeModal('adminModal')" style="padding: 4px 8px; font-weight: bold;">✕ Đóng</button>
+      </div>
+
+      <div id="adminAbsenceAlertBox" style="margin-top:6px; display:none; background:#fee2e2; border:1px solid #ef4444; padding:6px; border-radius:4px;">
+        <div style="font-size:0.75rem; font-weight:bold; color:#b91c1c;">⚠ CẢNH BÁO CÔNG NHÂN VẮNG TỪ 3 NGÀY:</div>
+        <div id="adminAbsenceList" style="max-height:80px; overflow-y:auto; font-size:0.7rem; color:#7f1d1d; margin-top:2px;"></div>
+      </div>
+
+      <div class="admin-feature-grid">
+        <button class="btn" style="background:#0284c7; color:white; padding:8px; justify-content:center;" onclick="openSyncInterface()">🔄 Đồng Bộ Dữ Liệu</button>
+        <button class="btn" style="background:#0f766e; color:white; padding:8px; justify-content:center;" onclick="openDeviceAuthModal()">👥 Duyệt Cán Bộ</button>
+        <button class="btn" style="background:#16a34a; color:white; padding:8px; justify-content:center;" onclick="adminExportBackupExcel()">💾 Xuất Lưu Trữ (.xlsx)</button>
+        <button class="btn" style="background:#b45309; color:white; padding:8px; justify-content:center;" onclick="openRetiredHistoryModal()">📋 Hồ Sơ Nghỉ Việc</button>
+        <button class="btn" style="background:#7c3aed; color:white; padding:8px; justify-content:center;" onclick="openDamageReportSummary()">🛠️ Báo Hỏng / Vệ Sinh</button>
+        <button class="btn" style="background:#dc2626; color:white; padding:8px; justify-content:center;" onclick="adminClearAll()">🗑 Xóa Trắng Dữ Liệu</button>
+      </div>
+
+      <div id="syncBox" style="display:none; background:#f8fafc; border:1px dashed #0284c7; padding:8px; border-radius:4px; margin-bottom:8px;">
+        <div style="font-size:0.75rem; font-weight:bold; margin-bottom:4px; color:#0369a1;">ĐỒNG BỘ NGOẠI TUYẾN / DỰ PHÒNG:</div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn" style="background:#0284c7; color:white;" onclick="exportSyncFile()">1. Xuất file Đồng Bộ (.json)</button>
+          <input type="file" id="syncFileInput" accept=".json" style="display:none;" onchange="importSyncFile(event)">
+          <button class="btn" style="background:#0ea5e9; color:white;" onclick="document.getElementById('syncFileInput').click()">2. Nạp file Đồng Bộ</button>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <span style="font-size:0.75rem; font-weight:bold;">Nhật ký thao tác (Audit Logs):</span>
+        <button onclick="exportAuditLogsExcel()" class="btn" style="background:#334155; color:white; padding:3px 8px; font-size:0.65rem;">📥 Xuất Nhật Ký (.xlsx)</button>
+      </div>
+      <div id="adminLogList" style="max-height:160px; overflow-y:auto; background:#f1f5f9; padding:6px; font-size:0.68rem; border:1px solid var(--border);"></div>
+      <div style="height: 40px;"></div>
+    </div>
+  </div>
+
+  <!-- MODAL DUYỆT CÁN BỘ & XÓA THIẾT BỊ -->
+  <div class="modal" id="deviceAuthModal">
+    <div class="modal-content" style="max-width: 600px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:5px; margin-bottom:8px;">
+        <h3 style="font-size:0.95rem; color:#0f766e; font-weight:bold;">👥 DANH SÁCH THIẾT BỊ & DUYỆT CÁN BỘ</h3>
+        <button onclick="closeModal('deviceAuthModal')" style="padding: 4px 8px; font-weight: bold;">✕ Đóng</button>
+      </div>
+      <p style="font-size:0.75rem; color:#64748b; margin-bottom:6px;">Quản lý phân quyền thiết bị di động truy cập trực tiếp từ Realtime Database.</p>
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr><th>Tên Cán Bộ</th><th>Mã Máy</th><th>Trạng Thái</th><th>Thao Tác</th></tr>
+          </thead>
+          <tbody id="deviceAuthBody"></tbody>
+        </table>
+      </div>
+      <div style="height: 40px;"></div>
+    </div>
+  </div>
+
+  <!-- MODAL XEM HỒ SƠ NGHỈ VIỆC -->
+  <div class="modal" id="retiredModal">
+    <div class="modal-content" style="max-width: 550px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:5px; margin-bottom:8px;">
+        <h3 style="font-size:0.9rem; color:#b45309;">📋 DANH SÁCH CÔNG NHÂN ĐÃ NGHỈ VIỆC</h3>
+        <button onclick="closeModal('retiredModal')" style="padding: 4px 8px; font-weight: bold;">✕ Đóng</button>
+      </div>
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr><th>Mã NV</th><th>Họ Tên</th><th>CCCD</th><th>Phòng Cũ</th><th>Ngày Vào</th><th>Ngày Nghỉ</th></tr>
+          </thead>
+          <tbody id="retiredWorkersBody"></tbody>
+        </table>
+      </div>
+      <div style="height: 40px;"></div>
+    </div>
+  </div>
+
+  <!-- MODAL TỔNG HỢP HƯ HỎNG CSVC VÀ VỆ SINH -->
+  <div class="modal" id="damageSummaryModal">
+    <div class="modal-content" style="max-width: 550px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:5px; margin-bottom:8px;">
+        <h3 style="font-size:0.9rem; color:#7c3aed;">🛠️ TỔNG HỢP BÁO HỎNG CSVC & CẦN DỌN VỆ SINH</h3>
+        <button onclick="closeModal('damageSummaryModal')" style="padding: 4px 8px; font-weight: bold;">✕ Đóng</button>
+      </div>
+      <div class="table-container">
+        <table class="data-table">
+          <thead><tr><th>Phòng</th><th>Khu Vực</th><th>Hạng Mục Cần Xử Lý</th><th>Thao Tác</th></tr></thead>
+          <tbody id="damageSummaryBody"></tbody>
+        </table>
+      </div>
+      <div style="height: 40px;"></div>
+    </div>
+  </div>
+
+  <!-- KHU VỰC IN DANH SÁCH PHÒNG (PRINT-ONLY) -->
+  <div id="printableArea" style="display:none;" class="print-only">
+    <div style="text-align:center; margin-bottom:12px;">
+      <h2 id="printRoomTitle" style="font-size:16pt; margin-bottom:4px; font-weight:bold; color:#0f172a;"></h2>
+      <p id="printMeta" style="font-size:10pt; color:#475569;"></p>
+    </div>
+    <table style="width:100%; border-collapse:collapse; font-size:10pt;">
+      <thead>
+        <tr style="background:#f1f5f9;">
+          <th style="border:1px solid #000; padding:6px; text-align:center;">STT</th>
+          <th style="border:1px solid #000; padding:6px;">Họ và Tên</th>
+          <th style="border:1px solid #000; padding:6px;">Mã NV</th>
+          <th style="border:1px solid #000; padding:6px;">Số CCCD</th>
+          <th style="border:1px solid #000; padding:6px; text-align:center;">Phòng</th>
+          <th style="border:1px solid #000; padding:6px;">Quê Quán</th>
+          <th style="border:1px solid #000; padding:6px; text-align:center; width:90px;">Ký Nhận</th>
+        </tr>
+      </thead>
+      <tbody id="printTableBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const TOTAL_ROWS = 25;
+    const ROOMS_PER_ROW = 14;
+    const CAPACITY = 20;
+
+    let db = {};
+    let logs = [];
+    let retiredList = [];
+    // Lịch sử báo cáo thống kê theo ngày (snapshot, không ghi đè ngày cũ)
+    let dailyReports = {};
+    let curRoomId = null;
+    let transferringWorkerIdx = null;
+
+    let localStream = null;
+    let isScanning = false;
+    let currentCameraFacing = "environment";
+    let scanTimer = null;
+    let persistDebounceTimer = null;
+    let currentRoomRef = null;
+
+    let searchDebounceTimer = null;
+    let isRemoteRoomsFetched = false;
+    let isSyncingAllRooms = false;
+    let lastSyncTimestamp = 0;
+
+    let currentDeviceId = "";
+    let currentDeviceName = "";
+    let currentUserRole = "staff"; // Mặc định cho phép thao tác offline
+    let approvedDevices = {};
+
+    let longPressTimer = null;
+    let isLongPressTriggered = false;
+    let activeLongPressRoomId = null;
+
+    let syncQueue = [];
+    let isFlushingQueue = false;
+
+    // ==================== 1. INDEXEDDB AN TOÀN TUYỆT ĐỐI ====================
+    const IDB_NAME = 'LangVanCampDB';
+    const IDB_VERSION = 1;
+    const IDB_STORE_NAME = 'app_state';
+
+    function openIndexedDB() {
+      return new Promise((resolve) => {
+        try {
+          if (!window.indexedDB) return resolve(null);
+          const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+          req.onupgradeneeded = (e) => {
+            const idbInstance = e.target.result;
+            if (!idbInstance.objectStoreNames.contains(IDB_STORE_NAME)) {
+              idbInstance.createObjectStore(IDB_STORE_NAME);
+            }
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => resolve(null);
+        } catch(e) {
+          resolve(null);
+        }
+      });
+    }
+
+    async function idbGet(key) {
+      try {
+        const idb = await openIndexedDB();
+        if (!idb) return localStorage.getItem('LV_' + key) ? JSON.parse(localStorage.getItem('LV_' + key)) : null;
+        return new Promise((resolve) => {
+          const tx = idb.transaction(IDB_STORE_NAME, 'readonly');
+          const req = tx.objectStore(IDB_STORE_NAME).get(key);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => resolve(null);
+        });
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function idbSet(key, val) {
+      try {
+        const idb = await openIndexedDB();
+        if (!idb) {
+          localStorage.setItem('LV_' + key, JSON.stringify(val));
+          return;
+        }
+        return new Promise((resolve) => {
+          const tx = idb.transaction(IDB_STORE_NAME, 'readwrite');
+          const req = tx.objectStore(IDB_STORE_NAME).put(val, key);
+          req.onsuccess = () => resolve();
+          req.onerror = () => resolve();
+        });
+      } catch (e) {}
+    }
+
+    async function loadDatabaseAsync() {
+      try {
+        let localDb = await idbGet('db');
+        let localLogs = await idbGet('logs');
+        let localRetired = await idbGet('retiredList');
+        let localDailyReports = await idbGet('dailyReports');
+        let localTs = await idbGet('lastSyncTimestamp');
+
+        if (!localDb) {
+          const oldDb = localStorage.getItem('LANG_VAN_FINAL_PRO_DB');
+          if (oldDb) {
+            localDb = JSON.parse(oldDb);
+            localLogs = JSON.parse(localStorage.getItem('LANG_VAN_FINAL_PRO_LOGS') || '[]');
+            localRetired = JSON.parse(localStorage.getItem('LANG_VAN_FINAL_PRO_RETIRED') || '[]');
+          }
+        }
+
+        db = localDb && typeof localDb === 'object' ? localDb : {};
+        logs = Array.isArray(localLogs) ? localLogs : [];
+        retiredList = Array.isArray(localRetired) ? localRetired : [];
+        dailyReports = (localDailyReports && typeof localDailyReports === 'object' && !Array.isArray(localDailyReports)) ? localDailyReports : {};
+        lastSyncTimestamp = Number(localTs) || 0;
+      } catch (err) {
+        db = {}; logs = []; retiredList = []; lastSyncTimestamp = 0;
+      }
+      normalizeDatabase();
+    }
+
+    function persistLocalState() {
+      clearTimeout(persistDebounceTimer);
+      persistDebounceTimer = setTimeout(async () => {
+        try {
+          await Promise.all([
+            idbSet('db', db),
+            idbSet('logs', logs.slice(0, 500)),
+            idbSet('retiredList', retiredList),
+            idbSet('dailyReports', dailyReports),
+            idbSet('lastSyncTimestamp', lastSyncTimestamp)
+          ]);
+        } catch (e) {}
+      }, 150);
+    }
+
+    // ==================== 2. HÀNG ĐỢI ĐỒNG BỘ ====================
+    async function loadSyncQueue() {
+      try {
+        const q = await idbGet('syncQueue');
+        syncQueue = Array.isArray(q) ? q : [];
+        updateSyncIndicatorBadge();
+      } catch (e) {
+        syncQueue = [];
+      }
+    }
+
+    async function persistSyncQueue() {
+      try {
+        await idbSet('syncQueue', syncQueue);
+        updateSyncIndicatorBadge();
+      } catch (e) {}
+    }
+
+    function enqueueRoomSync(roomId) {
+      if (!syncQueue.includes(roomId)) {
+        syncQueue.push(roomId);
+        persistSyncQueue();
+      }
+    }
+
+    function updateSyncIndicatorBadge() {
+      const indicator = document.getElementById('syncIndicator');
+      if (!indicator) return;
+      
+      if (!navigator.onLine) {
+        indicator.innerText = `🟠 Ngoại tuyến (${syncQueue.length} chờ gửi)`;
+        indicator.style.color = "#d97706";
+      } else if (syncQueue.length > 0) {
+        indicator.innerText = `🟡 Đang gửi bù ${syncQueue.length} phòng...`;
+        indicator.style.color = "#b45309";
+      } else {
+        indicator.innerText = "🟢 Đã đồng bộ trực tuyến";
+        indicator.style.color = "#16a34a";
+      }
+    }
+
+    // ==================== 3. HÒA GIẢI XUNG ĐỘT ====================
+    function mergeWorkerLists(localWorkers = [], remoteWorkers = []) {
+      const mergedMap = new Map();
+
+      remoteWorkers.forEach(rw => {
+        const key = normalizeIdCard(rw.idCard) || rw.empId || rw.name;
+        if (key) mergedMap.set(key, JSON.parse(JSON.stringify(rw)));
+      });
+
+      localWorkers.forEach(lw => {
+        const key = normalizeIdCard(lw.idCard) || lw.empId || lw.name;
+        if (!key) return;
+
+        if (!mergedMap.has(key)) {
+          mergedMap.set(key, JSON.parse(JSON.stringify(lw)));
+        } else {
+          const target = mergedMap.get(key);
+          const remoteTime = target.updatedAt || 0;
+          const localTime = lw.updatedAt || 0;
+
+          target.attendanceHistory = target.attendanceHistory || {};
+          const localAtt = lw.attendanceHistory || {};
+          Object.keys(localAtt).forEach(date => {
+            if (target.attendanceHistory[date] === undefined || localTime >= remoteTime) {
+              target.attendanceHistory[date] = localAtt[date];
+            }
+          });
+
+          if (localTime >= remoteTime) {
+            target.name = lw.name || target.name;
+            target.empId = lw.empId || target.empId;
+            target.gender = lw.gender || target.gender;
+            target.dob = lw.dob || target.dob;
+            target.phone = lw.phone || target.phone;
+            target.address = lw.address || target.address;
+            target.note = lw.note || target.note;
+            target.leaveDate = lw.leaveDate || target.leaveDate;
+            target.updatedAt = localTime;
+          }
+        }
+      });
+
+      return Array.from(mergedMap.values()).slice(0, CAPACITY);
+    }
+
+    async function flushSyncQueue() {
+      if (!window.firestoreDb || isFlushingQueue || syncQueue.length === 0 || !navigator.onLine) return;
+      isFlushingQueue = true;
+      updateSyncIndicatorBadge();
+
+      try {
+        const roomsToProcess = [...syncQueue];
+        const fetchPromises = roomsToProcess.map(id => window.firestoreDb.ref(`rooms/${id}`).once('value'));
+        const snapshots = await Promise.all(fetchPromises);
+        const multiUpdates = {};
+
+        roomsToProcess.forEach((roomId, i) => {
+          const localRoom = db[roomId];
+          if (!localRoom) return;
+
+          const remoteData = snapshots[i].val() || {};
+          const remoteWorkers = Array.isArray(remoteData.workers) ? remoteData.workers : [];
+
+          const resolvedWorkers = mergeWorkerLists(localRoom.workers, remoteWorkers);
+          localRoom.workers = resolvedWorkers;
+          localRoom._knownWorkerKeys = resolvedWorkers.map(workerKey).filter(Boolean);
+
+          const count = resolvedWorkers.length;
+          multiUpdates[`rooms/${roomId}/workers`] = resolvedWorkers;
+          multiUpdates[`metadata/rooms_summary/${roomId}`] = {
+            count: count,
+            isLocked: !!localRoom.isLocked,
+            damage: localRoom.damageReport || [],
+            isMod: !!localRoom.isModified,
+            customNote: localRoom.customNote || "",
+            updatedAt: firebase.database.ServerValue.TIMESTAMP
+          };
+        });
+
+        if (Object.keys(multiUpdates).length > 0) {
+          await window.firestoreDb.ref().update(multiUpdates);
+        }
+
+        syncQueue = syncQueue.filter(id => !roomsToProcess.includes(id));
+        await Promise.all([
+          persistSyncQueue(),
+          idbSet('db', db)
+        ]);
+
+        renderRooms();
+        if (curRoomId && roomsToProcess.includes(curRoomId)) {
+          renderWorkersInRoom();
+        }
+      } catch (err) {
+        console.warn("Lỗi flushSyncQueue:", err);
+      } finally {
+        isFlushingQueue = false;
+        updateSyncIndicatorBadge();
+      }
+    }
+
+    // ==================== 4. PHÂN QUYỀN VÀ ĐỊNH DANH ====================
+    function initDeviceIdentity(uid) {
+      currentDeviceId = uid || "DEV-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+      let dName = localStorage.getItem('LV_DEVICE_NAME');
+      if (!dName) {
+        dName = "Cán bộ (" + currentDeviceId.substring(0, 6).toUpperCase() + ")";
+        localStorage.setItem('LV_DEVICE_NAME', dName);
+      }
+      currentDeviceName = dName;
+
+      const idEl = document.getElementById('lblDeviceId');
+      const nameEl = document.getElementById('lblDeviceName');
+      if (idEl) idEl.innerText = currentDeviceId.substring(0, 8) + '...';
+      if (nameEl) nameEl.innerText = currentDeviceName;
+      
+      updateUIPermissions();
+    }
+
+    function renameCurrentDevice() {
+      const newName = prompt("Nhập Họ & Tên cán bộ (và khu vực phụ trách):", currentDeviceName);
+      if (newName && newName.trim()) {
+        currentDeviceName = newName.trim();
+        localStorage.setItem('LV_DEVICE_NAME', currentDeviceName);
+        document.getElementById('lblDeviceName').innerText = currentDeviceName;
+
+        if (window.firestoreDb && currentDeviceId) {
+          window.firestoreDb.ref('system_members/' + currentDeviceId).update({
+            name: currentDeviceName,
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+    }
+
+    function syncDeviceAuthWithFirebase() {
+      if (!window.firestoreDb || !currentDeviceId) return;
+      
+      const devRef = window.firestoreDb.ref('system_members/' + currentDeviceId);
+      devRef.on('value', (snap) => {
+        const val = snap.val();
+        if (val) {
+          currentUserRole = (val.status === 'approved') ? (val.role || 'staff') : 'viewer';
+        } else {
+          devRef.set({
+            deviceId: currentDeviceId,
+            name: currentDeviceName,
+            status: "approved",
+            role: "staff",
+            createdAt: new Date().toISOString()
+          });
+          currentUserRole = 'staff';
+        }
+        updateUIPermissions();
+        syncAllRoomsInBackground();
+      });
+
+      window.firestoreDb.ref('system_members').on('value', (snap) => {
+        approvedDevices = snap.val() || {};
+        renderDeviceAuthList();
+      });
+    }
+
+    function updateUIPermissions() {
+      const isAuthorized = (currentUserRole === 'staff' || currentUserRole === 'admin');
+      const isAdmin = (currentUserRole === 'admin');
+      
+      const roleText = isAdmin ? '🛡️ Quản Trị Viên' : isAuthorized ? '🟢 Cán Bộ (Đã Duyệt)' : '👁 Khách (Chỉ Xem)';
+      const roleEl = document.getElementById('lblUserRole');
+      if (roleEl) {
+        roleEl.innerText = roleText;
+        roleEl.style.color = isAuthorized ? '#16a34a' : '#d97706';
+      }
+
+      const helpEl = document.getElementById('lblRoleHelp');
+      if (helpEl) {
+        helpEl.innerText = isAuthorized ? "(Toàn quyền vận hành)" : "(Chỉ xem - Liên hệ Admin duyệt)";
+      }
+
+      const topAdminBtn = document.getElementById('btnTopAdmin');
+      if (topAdminBtn) {
+        topAdminBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+      }
+
+      document.querySelectorAll('.edit-required').forEach(el => {
+        if (!isAuthorized) el.setAttribute('disabled', 'true');
+        else el.removeAttribute('disabled');
+      });
+    }
+
+    function handleScanAuthClick() {
+      openGlobalScanner();
+    }
+
+    function handleImportAuthClick() {
+      openImportModal();
+    }
+
+    function openAdminPanelClick() {
+      checkAbsenceAlerts();
+      adminViewLogs();
+      openModal('adminModal');
+    }
+
+    function maskCccdNumber(cccd) {
+      if (!cccd) return '-';
+      return cccd;
+    }
+
+    function openDeviceAuthModal() {
+      renderDeviceAuthList();
+      openModal('deviceAuthModal');
+    }
+
+    function renderDeviceAuthList() {
+      const tbody = document.getElementById('deviceAuthBody');
+      if (!tbody) return;
+      const keys = Object.keys(approvedDevices);
+      if (keys.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#64748b;">Chưa có thiết bị nào đăng ký.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = keys.map(k => {
+        const item = approvedDevices[k];
+        const isApp = item.status === 'approved';
+        return `
+          <tr>
+            <td><b>${escapeHtml(item.name || 'Cán bộ chưa đặt tên')}</b></td>
+            <td><code style="background:#e2e8f0; padding:2px 4px; border-radius:3px;">${escapeHtml(item.deviceId || k)}</code></td>
+            <td><span style="color:${isApp ? '#16a34a' : '#d97706'}; font-weight:bold;">${isApp ? (item.role === 'admin' ? 'Admin' : 'Đã duyệt') : 'Chờ duyệt'}</span></td>
+            <td>
+              <div style="display:flex; gap:4px;">
+                <button onclick="toggleDeviceApproval('${k}', ${!isApp})" class="btn" style="background:${isApp ? '#d97706' : '#16a34a'}; color:white; padding:3px 6px; font-size:0.65rem;">
+                  ${isApp ? 'Thu Hồi' : 'Duyệt'}
+                </button>
+                <button onclick="deleteDeviceAuth('${k}')" class="btn" style="background:#dc2626; color:white; padding:3px 6px; font-size:0.65rem;">
+                  🗑 Xóa
+                </button>
+              </div>
+            </td>
+          </tr>`;
+      }).join('');
+    }
+
+    function toggleDeviceApproval(devId, approve) {
+      if (!window.firestoreDb) return;
+      window.firestoreDb.ref('system_members/' + devId).update({
+        status: approve ? 'approved' : 'pending',
+        role: approvedDevices[devId]?.role || 'staff'
+      });
+      recordLog("Phân quyền", `${approve ? 'Duyệt' : 'Thu hồi'} cán bộ máy: ${devId}`);
+    }
+
+    function deleteDeviceAuth(devId) {
+      if (!confirm(`Bạn có chắc muốn XÓA thiết bị [${devId}] khỏi hệ thống?`)) return;
+      if (!window.firestoreDb) return;
+      window.firestoreDb.ref('system_members/' + devId).remove();
+      recordLog("Xóa cán bộ", `Xóa quyền thiết bị: ${devId}`);
+    }
+
+    // ==================== 5. CHUẨN HÓA DỮ LIỆU CỤC BỘ ====================
+    function normalizeDatabase() {
+      if (!db || typeof db !== 'object' || Array.isArray(db)) db = {};
+      if (!Array.isArray(logs)) logs = [];
+      if (!Array.isArray(retiredList)) retiredList = [];
+
+      for (let r = 1; r <= TOTAL_ROWS; r++) {
+        const area = getAreaByRow(r);
+        for (let p = 1; p <= ROOMS_PER_ROW; p++) {
+          const rid = `D${r}-P${String(p).padStart(2, '0')}`;
+          if (!db[rid] || typeof db[rid] !== 'object') {
+            db[rid] = createEmptyRoom(rid, r, p, area);
+          } else {
+            db[rid].id = rid; db[rid].row = r; db[rid].no = p; db[rid].area = area;
+            db[rid].isLocked = !!db[rid].isLocked;
+            db[rid].damageReport = Array.isArray(db[rid].damageReport) ? db[rid].damageReport : [];
+            db[rid].isModified = !!db[rid].isModified;
+            db[rid].customNote = String(db[rid].customNote || '').trim();
+            db[rid].workers = Array.isArray(db[rid].workers) ? db[rid].workers : [];
+            db[rid].workers.forEach(normalizeWorker);
+          }
+        }
+      }
+      Object.keys(db).forEach(id => {
+        if (!/^D(?:[1-9]|1\d|2[0-5])-P(?:0[1-9]|1[0-4])$/.test(id)) delete db[id];
+      });
+      populateRowSelects();
+      populateTargetRoomSelects();
+      const attDateInput = document.getElementById('attendanceDateInput');
+      if (attDateInput && !attDateInput.value) attDateInput.value = getLocalDateISO();
+      updateDashboardStats();
+    }
+
+    function createEmptyRoom(id, row, no, area) {
+      return { id, row, no, area, isLocked: false, damageReport: [], isModified: false, customNote: "", workers: [] };
+    }
+
+    function getAreaByRow(row) {
+      return row <= 5 ? "Khu A" : row <= 10 ? "Khu B" : row <= 15 ? "Khu C" : row <= 20 ? "Khu D" : "Khu E";
+    }
+
+    function getLocalDateISO(date = new Date()) {
+      const y = date.getFullYear(), m = String(date.getMonth() + 1).padStart(2, '0'), d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function getTodayVN() {
+      return new Date().toLocaleDateString('vi-VN');
+    }
+
+    function normalizeWorker(w) {
+      if (!w || typeof w !== 'object') return;
+      w.empId = String(w.empId ?? '').trim();
+      w.name = String(w.name ?? '').trim();
+      w.idCard = normalizeIdCard(w.idCard);
+      w.gender = w.gender === 'Nữ' ? 'Nữ' : 'Nam';
+      w.dob = String(w.dob ?? '').trim();
+      w.phone = String(w.phone ?? '').trim();
+      w.address = String(w.address ?? '').trim();
+      w.note = String(w.note ?? '').trim();
+      w.attendanceHistory = (w.attendanceHistory && typeof w.attendanceHistory === 'object') ? w.attendanceHistory : {};
+      w.joinDate = String(w.joinDate ?? '').trim();
+      w.leaveDate = normalizeLeaveDate(String(w.leaveDate ?? '').trim());
+    }
+
+    function normalizeLeaveDate(value) {
+      const v = String(value || '').trim();
+      if (!v) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+      const m = v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+      if (m) return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
+      return v;
+    }
+
+    function normalizeIdCard(value) {
+      if (value === null || value === undefined) return '';
+      const str = String(value).trim();
+      if (/e\+?/i.test(str)) {
+        const n = Number(str);
+        if (Number.isFinite(n)) return n.toFixed(0).replace(/\D/g, '');
+      }
+      return str.replace(/\D/g, '');
+    }
+
+    // ==================== 6. ĐỒNG BỘ NGUYÊN TỬ ====================
+    function workerKey(w) {
+      return normalizeIdCard(w?.idCard) || String(w?.empId || '').trim() || String(w?.name || '').trim().toLowerCase();
+    }
+
+    function mergeRoomForSync(localWorkers, remoteWorkers, knownKeys) {
+      const local = Array.isArray(localWorkers) ? localWorkers : [];
+      const remote = Array.isArray(remoteWorkers) ? remoteWorkers : [];
+      const known = knownKeys instanceof Set ? knownKeys : null;
+
+      if (!known) return mergeWorkerLists(local, remote);
+
+      const localMap = new Map(local.map(w => [workerKey(w), w]).filter(([k]) => k));
+      const remoteMap = new Map(remote.map(w => [workerKey(w), w]).filter(([k]) => k));
+      const deletedKeys = new Set([...known].filter(k => !localMap.has(k)));
+      const result = new Map();
+
+      remote.forEach(w => {
+        const k = workerKey(w);
+        if (k && !deletedKeys.has(k)) result.set(k, JSON.parse(JSON.stringify(w)));
+      });
+
+      local.forEach(w => {
+        const k = workerKey(w);
+        if (!k) return;
+        const r = result.get(k);
+        if (!r || (w.updatedAt || 0) >= (r.updatedAt || 0)) {
+          result.set(k, JSON.parse(JSON.stringify(w)));
+        }
+      });
+
+      return Array.from(result.values()).slice(0, CAPACITY);
+    }
+
+    async function syncSingleRoom(roomId) {
+      persistLocalState();
+      updateDashboardStats();
+      if (!db[roomId]) return false;
+      const room = db[roomId];
+      const localWorkers = Array.isArray(room.workers) ? room.workers : [];
+
+      if (!navigator.onLine || !window.firestoreDb) {
+        enqueueRoomSync(roomId);
+        return false;
+      }
+
+      try {
+        const roomRef = window.firestoreDb.ref(`rooms/${roomId}/workers`);
+        let committedWorkers = localWorkers;
+        const knownKeys = Array.isArray(room._knownWorkerKeys) ? new Set(room._knownWorkerKeys) : null;
+
+        const result = await roomRef.transaction((remoteWorkers) => {
+          const safeRemote = Array.isArray(remoteWorkers) ? remoteWorkers : [];
+          committedWorkers = mergeRoomForSync(localWorkers, safeRemote, knownKeys);
+          return committedWorkers;
+        });
+
+        if (!result.committed) {
+          enqueueRoomSync(roomId);
+          return false;
+        }
+
+        committedWorkers = Array.isArray(result.snapshot.val()) ? result.snapshot.val() : [];
+        committedWorkers.forEach(normalizeWorker);
+        db[roomId].workers = committedWorkers;
+        db[roomId]._knownWorkerKeys = committedWorkers.map(workerKey).filter(Boolean);
+        delete db[roomId]._cachedCount;
+
+        await window.firestoreDb.ref(`metadata/rooms_summary/${roomId}`).update({
+          count: committedWorkers.length,
+          isLocked: !!db[roomId].isLocked,
+          damage: db[roomId].damageReport || [],
+          isMod: !!db[roomId].isModified,
+          customNote: db[roomId].customNote || "",
+          updatedAt: firebase.database.ServerValue.TIMESTAMP
+        });
+
+        syncQueue = syncQueue.filter(id => id !== roomId);
+        await persistSyncQueue();
+        persistLocalState();
+        updateSyncIndicatorBadge();
+        return true;
+      } catch (err) {
+        enqueueRoomSync(roomId);
+        return false;
+      }
+    }
+
+    async function forceFullResync() {
+      lastSyncTimestamp = 0;
+      await idbSet('lastSyncTimestamp', 0);
+      alert("Đang kiểm tra và tải lại dữ liệu mới nhất...");
+      await syncAllRoomsInBackground(true);
+    }
+
+    async function syncAllRoomsInBackground(isForced = false) {
+      if (!window.firestoreDb || isSyncingAllRooms || !navigator.onLine) return;
+
+      isSyncingAllRooms = true;
+      const indicator = document.getElementById('syncIndicator');
+      if (indicator) {
+        indicator.innerText = "🔍 Đang kiểm tra...";
+        indicator.style.color = "#0284c7";
+      }
+
+      try {
+        const summarySnap = await window.firestoreDb.ref('metadata/rooms_summary').once('value');
+        const summaries = summarySnap.val() || {};
+        const dirtyRoomIds = [];
+
+        Object.keys(summaries).forEach(roomId => {
+          const s = summaries[roomId];
+          const localRoom = db[roomId];
+          const actualWorkersCount = (localRoom && Array.isArray(localRoom.workers)) ? localRoom.workers.length : 0;
+          const serverCount = s.count || 0;
+
+          if (isForced || serverCount !== actualWorkersCount || (actualWorkersCount === 0 && serverCount > 0)) {
+            dirtyRoomIds.push(roomId);
+          }
+        });
+
+        const retiredSnap = await window.firestoreDb.ref('retired').limitToLast(100).once('value');
+        const remoteRetired = retiredSnap.val();
+        if (remoteRetired && typeof remoteRetired === 'object') {
+          const retiredArr = Array.isArray(remoteRetired) ? remoteRetired : Object.values(remoteRetired);
+          if (retiredArr.length > 0) retiredList = retiredArr;
+        }
+
+        if (dirtyRoomIds.length === 0) {
+          if (indicator) {
+            indicator.innerText = "🟢 Đã đồng bộ trực tuyến";
+            indicator.style.color = "#16a34a";
+          }
+          isSyncingAllRooms = false;
+          renderRooms();
+          updateDashboardStats();
+          return;
+        }
+
+        const CHUNK_SIZE = 15;
+        for (let i = 0; i < dirtyRoomIds.length; i += CHUNK_SIZE) {
+          const chunk = dirtyRoomIds.slice(i, i + CHUNK_SIZE);
+          const promises = chunk.map(rid => window.firestoreDb.ref(`rooms/${rid}`).once('value'));
+          const snapshots = await Promise.all(promises);
+
+          snapshots.forEach((snap, idx) => {
+            const rid = chunk[idx];
+            const remoteData = snap.val() || {};
+            if (db[rid]) {
+              const remoteWorkers = Array.isArray(remoteData.workers) ? remoteData.workers : [];
+              remoteWorkers.forEach(normalizeWorker);
+              const known = Array.isArray(db[rid]._knownWorkerKeys) ? new Set(db[rid]._knownWorkerKeys) : null;
+              db[rid].workers = mergeRoomForSync(db[rid].workers || [], remoteWorkers, known);
+              db[rid]._knownWorkerKeys = db[rid].workers.map(workerKey).filter(Boolean);
+              delete db[rid]._cachedCount;
+            }
+          });
+          await new Promise(resolve => setTimeout(resolve, 40));
+        }
+
+        lastSyncTimestamp = Date.now();
+        await Promise.all([
+          idbSet('db', db),
+          idbSet('retiredList', retiredList),
+          idbSet('lastSyncTimestamp', lastSyncTimestamp)
+        ]);
+
+        isRemoteRoomsFetched = true;
+        renderRooms();
+        updateDashboardStats();
+        updateSyncIndicatorBadge();
+      } catch (err) {
+        console.warn("Lỗi đồng bộ:", err);
+      } finally {
+        isSyncingAllRooms = false;
+      }
+    }
+
+    function recordLog(action, detail) {
+      const logItem = {
+        time: new Date().toLocaleString('vi-VN'),
+        user: `${currentDeviceName} (${currentDeviceId ? currentDeviceId.substring(0,6) : '...' })`,
+        action,
+        detail
+      };
+      logs.unshift(logItem);
+      if (logs.length > 500) logs.pop();
+      persistLocalState();
+
+      if (window.firestoreDb && navigator.onLine) {
+        window.firestoreDb.ref('logs').push(logItem);
+      }
+    }
+
+    function initGranularFirebase() {
+      if (!window.firestoreDb) return;
+
+      window.firestoreDb.ref('metadata/rooms_summary').on('value', (snapshot) => {
+        const summaries = snapshot.val() || {};
+        let needsWorkerSync = false;
+
+        Object.keys(db).forEach(roomId => {
+          if (summaries[roomId]) {
+            const s = summaries[roomId];
+            db[roomId].isLocked = !!s.isLocked;
+            db[roomId].damageReport = Array.isArray(s.damage) ? s.damage : [];
+            db[roomId].isModified = !!s.isMod;
+            db[roomId].customNote = s.customNote || "";
+
+            const localActual = db[roomId].workers ? db[roomId].workers.length : 0;
+            if (localActual !== s.count) {
+              needsWorkerSync = true;
+            }
+            db[roomId]._cachedCount = s.count || 0;
+          } else {
+            db[roomId]._cachedCount = 0;
+            db[roomId].isModified = false;
+          }
+        });
+        
+        renderRooms();
+        updateDashboardStats();
+        updateSyncIndicatorBadge();
+
+        if (needsWorkerSync && !isSyncingAllRooms) {
+          syncAllRoomsInBackground();
+        }
+      });
+
+      syncDeviceAuthWithFirebase();
+    }
+
+    // ==================== 7. HIỂN THỊ GIAO DIỆN PHÒNG ====================
+    function renderRooms(matchedIds = null) {
+      const grid = document.getElementById('roomGrid');
+      if (!grid) return;
+      const khu = document.getElementById('selKhu')?.value || 'ALL';
+      const status = document.getElementById('selRoomStatusFilter')?.value || 'ALL';
+      const matchedSet = matchedIds ? new Set(matchedIds) : null;
+
+      const rooms = Object.values(db)
+        .sort((a, b) => a.row - b.row || a.no - b.no)
+        .filter(r => {
+          if (matchedSet) return true;
+          return khu === 'ALL' || r.area === khu;
+        })
+        .filter(r => roomMatchesStatus(r, status))
+        .filter(r => !matchedSet || matchedSet.has(r.id));
+
+      if (matchedSet && rooms.length === 0) {
+        grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 40px 10px; color: #64748b; font-size: 0.9rem;">
+          🔍 Không tìm thấy kết quả phù hợp trên toàn bộ 350 Phòng.
+        </div>`;
+        return;
+      }
+
+      grid.innerHTML = rooms.map(r => {
+        const count = (r.workers && r.workers.length > 0) ? r.workers.length : (r._cachedCount || 0);
+        let cls = 'status-white';
+        if (r.isLocked) cls = 'status-lock';
+        else if (count >= CAPACITY) cls = 'status-full';
+        else if (r.isModified) cls = 'status-pink';
+        else if (count > 0) cls = 'status-occupied';
+
+        const isDirty = (r.damageReport || []).includes('Phòng bẩn / Chưa dọn');
+        const normalDamages = (r.damageReport || []).filter(item => item !== 'Phòng bẩn / Chưa dọn');
+        
+        const dirtyAlert = isDirty ? `<div class="room-dirty-alert">🧹 Phòng bẩn / Chưa dọn</div>` : '';
+        const damageAlert = normalDamages.length ? `<div class="room-absent-alert">🛠 ${escapeHtml(normalDamages.join(', '))}</div>` : '';
+        const customNoteTag = r.customNote ? `<div class="room-custom-note" title="${escapeHtml(r.customNote)}">📌 ${escapeHtml(r.customNote)}</div>` : '';
+
+        return `
+          <div class="room-card ${cls}" 
+               onmousedown="startLongPress('${r.id}')" 
+               onmouseup="cancelLongPress('${r.id}')" 
+               ontouchstart="startLongPress('${r.id}')" 
+               ontouchend="cancelLongPress('${r.id}')"
+               onclick="handleRoomClick('${r.id}')">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div class="room-title" style="font-weight:800;">${escapeHtml(r.id)}</div>
+              <span class="badge-tag">${r.isLocked ? 'KHO' : `${count}/${CAPACITY}`}</span>
+            </div>
+            <div style="font-size:.65rem;margin-top:2px;">${escapeHtml(r.area)} · Dãy ${r.row}</div>
+            ${dirtyAlert}${damageAlert}${customNoteTag}
+          </div>`;
+      }).join('');
+
+      updateDashboardStats();
+    }
+
+    function startLongPress(roomId) {
+      isLongPressTriggered = false;
+      activeLongPressRoomId = roomId;
+      longPressTimer = setTimeout(() => {
+        isLongPressTriggered = true;
+        if (navigator.vibrate) navigator.vibrate(50);
+        openRoomNoteDialog(roomId);
+      }, 600);
+    }
+
+    function cancelLongPress() {
+      clearTimeout(longPressTimer);
+    }
+
+    function handleRoomClick(roomId) {
+      if (isLongPressTriggered) {
+        isLongPressTriggered = false;
+        return;
+      }
+      openRoomModal(roomId);
+    }
+
+    function openRoomNoteDialog(roomId) {
+      const room = db[roomId];
+      if (!room) return;
+      document.getElementById('noteModalRoomTitle').innerText = `📝 GHI CHÚ PHÒNG: ${room.id}`;
+      document.getElementById('txtQuickRoomNote').value = room.customNote || '';
+      openModal('roomNoteModal');
+    }
+
+    function saveQuickRoomNote() {
+      const noteText = document.getElementById('txtQuickRoomNote').value.trim();
+      if (activeLongPressRoomId && db[activeLongPressRoomId]) {
+        db[activeLongPressRoomId].customNote = noteText;
+        db[activeLongPressRoomId].isModified = true;
+        db[activeLongPressRoomId].updatedAt = Date.now();
+        syncSingleRoom(activeLongPressRoomId);
+        recordLog("Ghi chú", `Cập nhật ghi chú phòng ${activeLongPressRoomId}: ${noteText}`);
+        closeModal('roomNoteModal');
+        renderRooms();
+      }
+    }
+
+    function clearQuickRoomNote() {
+      if (activeLongPressRoomId && db[activeLongPressRoomId]) {
+        db[activeLongPressRoomId].customNote = "";
+        db[activeLongPressRoomId].updatedAt = Date.now();
+        syncSingleRoom(activeLongPressRoomId);
+        closeModal('roomNoteModal');
+        renderRooms();
+      }
+    }
+
+    function roomMatchesStatus(room, status) {
+      const count = (room.workers && room.workers.length > 0) ? room.workers.length : (room._cachedCount || 0);
+      if (status === 'DIRTY') return (room.damageReport || []).includes('Phòng bẩn / Chưa dọn');
+      if (status === 'PINK') return !!room.isModified;
+      if (status === 'FULL') return count >= CAPACITY;
+      if (status === 'AVAILABLE') return !room.isLocked && count < CAPACITY;
+      if (status === 'DAMAGE') return (room.damageReport || []).some(x => x !== 'Phòng bẩn / Chưa dọn');
+      return true;
+    }
+
+    // ==================== BẢNG ĐIỀU KHIỂN & ĐẾM QUÂN SỐ ====================
+    function updateDashboardStats() {
+      const rooms = Object.values(db);
+      let total = 0, male = 0, female = 0, enteredToday = 0, dirtyCount = 0;
+
+      const today = getLocalDateISO();
+      const isToday = (value) => {
+        if (!value) return false;
+        const raw = String(value).trim().split(/[ T]/)[0];
+        if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)) {
+          const [y, m, d] = raw.split('-');
+          return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}` === today;
+        }
+        const m = raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+        if (m) {
+          return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}` === today;
+        }
+        return false;
+      };
+
+      rooms.forEach(r => {
+        if ((r.damageReport || []).includes('Phòng bẩn / Chưa dọn')) dirtyCount++;
+        const hasWorkers = Array.isArray(r.workers) && r.workers.length > 0;
+        const count = hasWorkers ? r.workers.length : (r._cachedCount || 0);
+        total += count;
+
+        if (hasWorkers) {
+          r.workers.forEach(w => {
+            if (w.gender === 'Nữ') female++; else male++;
+            if (isToday(w.joinDate || w.entryDate)) enteredToday++;
+          });
+        }
+      });
+
+      const usableRooms = rooms.filter(r => !r.isLocked);
+      const availableRooms = usableRooms.filter(r => {
+        const c = (r.workers && r.workers.length > 0) ? r.workers.length : (r._cachedCount || 0);
+        return c < CAPACITY;
+      }).length;
+      const fullRooms = usableRooms.filter(r => {
+        const c = (r.workers && r.workers.length > 0) ? r.workers.length : (r._cachedCount || 0);
+        return c >= CAPACITY;
+      }).length;
+
+      const modifiedRooms = rooms.filter(r => r.isModified).length;
+
+      const retiredToday = (Array.isArray(retiredList) ? retiredList : []).filter(w =>
+        isToday(w.retireDate || w.leaveDate || w.ngayNghi || w.retiredDate || w.date || w.ngayRa || w.checkOutDate)
+      ).length;
+
+      const occupancy = rooms.length ? Math.round((total / (rooms.length * CAPACITY)) * 100) : 0;
+      const diffToday = enteredToday - retiredToday;
+
+      const setText = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+      };
+
+      setText('statOcc', `${Math.min(100, occupancy)}%`);
+      setText('statTotal', `${total}/${rooms.length * CAPACITY}`);
+      setText('statToday', enteredToday > 0 ? `+${enteredToday}` : enteredToday);
+      setText('statRetiredToday', retiredToday > 0 ? `-${retiredToday}` : retiredToday);
+      setText('statDirty', dirtyCount);
+
+      const diffEl = document.getElementById('statDiffToday');
+      if (diffEl) {
+        if (diffToday > 0) {
+          diffEl.textContent = `+${diffToday}`;
+          diffEl.style.color = "var(--green)";
+        } else if (diffToday < 0) {
+          diffEl.textContent = `${diffToday}`;
+          diffEl.style.color = "var(--red)";
+        } else {
+          diffEl.textContent = "0";
+          diffEl.style.color = "#64748b";
+        }
+      }
+
+      const genderEl = document.getElementById('statGender');
+      if (genderEl) genderEl.innerHTML = `${male}/<span style="color:var(--red);font-weight:bold;">${female}</span>`;
+
+      const roomStatusEl = document.getElementById('statRoomStatus');
+      if (roomStatusEl) roomStatusEl.innerHTML = `${availableRooms}/<span style="color:var(--red);font-weight:bold;">${fullRooms}</span>`;
+
+      setText('statMod', modifiedRooms);
+
+      // Lưu snapshot của Dashboard theo ngày để báo cáo lịch sử không bị thay đổi
+      // khi dữ liệu hiện tại được cập nhật vào các ngày sau.
+      saveDailyReportSnapshot(today, {
+        date: today,
+        occupancy: Math.min(100, occupancy),
+        total: total,
+        capacity: rooms.length * CAPACITY,
+        enteredToday: enteredToday,
+        retiredToday: retiredToday,
+        diffToday: diffToday,
+        male: male,
+        female: female,
+        availableRooms: availableRooms,
+        fullRooms: fullRooms,
+        dirtyRooms: dirtyCount,
+        modifiedRooms: modifiedRooms,
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    function saveDailyReportSnapshot(date, report) {
+      if (!date || !report) return;
+      const old = dailyReports[date] || {};
+      // Trong ngày chỉ cập nhật số liệu mới nhất; các ngày trước vẫn được giữ nguyên.
+      dailyReports[date] = Object.assign({}, old, report, { date });
+      try {
+        idbSet('dailyReports', dailyReports);
+      } catch (e) {}
+    }
+
+    function getDailyReportRows() {
+      const rows = Object.keys(dailyReports || {}).sort().reverse().map(date => {
+        const r = dailyReports[date] || {};
+        return {
+          'Ngày': date,
+          'Hiệu suất': `${Number(r.occupancy || 0)}%`,
+          'Tổng quân số': Number(r.total || 0),
+          'Sức chứa': Number(r.capacity || TOTAL_ROWS * ROOMS_PER_ROW * CAPACITY),
+          'Vào hôm nay': Number(r.enteredToday || 0),
+          'Nghỉ trong ngày': Number(r.retiredToday || 0),
+          'Biến động hôm nay': Number(r.diffToday || 0),
+          'Nam': Number(r.male || 0),
+          'Nữ': Number(r.female || 0),
+          'Phòng còn chỗ': Number(r.availableRooms || 0),
+          'Phòng đầy (Đỏ)': Number(r.fullRooms || 0),
+          'Cần dọn dẹp': Number(r.dirtyRooms || 0),
+          'Biến động phòng': Number(r.modifiedRooms || 0)
+        };
+      });
+      return rows;
+    }
+
+    function buildDailyReportSheet(wb) {
+      const rows = getDailyReportRows();
+      const ws = XLSX.utils.aoa_to_sheet([]);
+
+      // Tiêu đề báo cáo
+      XLSX.utils.sheet_add_aoa(ws, [['BÁO CÁO THỐNG KÊ']], { origin: 'A1' });
+      XLSX.utils.sheet_add_aoa(ws, [['🔎 Tìm kiếm theo ngày', 'Nhập ngày dạng YYYY-MM-DD để lọc dữ liệu']], { origin: 'A3' });
+      XLSX.utils.sheet_add_aoa(ws, [['Báo cáo lưu trữ tất cả các ngày - nội dung đồng bộ theo Dashboard']], { origin: 'A4' });
+
+      const headers = ['Ngày','Hiệu suất','Tổng quân số','Sức chứa','Vào hôm nay','Nghỉ trong ngày','Biến động hôm nay','Nam','Nữ','Phòng còn chỗ','Phòng đầy (Đỏ)','Cần dọn dẹp','Biến động phòng'];
+      XLSX.utils.sheet_add_aoa(ws, [headers], { origin: 'A6' });
+      if (rows.length) {
+        XLSX.utils.sheet_add_json(ws, rows, { origin: 'A7', skipHeader: true });
+      } else {
+        XLSX.utils.sheet_add_aoa(ws, [['Chưa có dữ liệu báo cáo. Báo cáo sẽ được tích lũy từ thời điểm chức năng được kích hoạt.']], { origin: 'A7' });
+      }
+
+      ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:12} }];
+      ws['!cols'] = [
+        {wch:14},{wch:12},{wch:14},{wch:12},{wch:14},{wch:16},{wch:18},
+        {wch:9},{wch:9},{wch:16},{wch:17},{wch:15},{wch:17}
+      ];
+      if (rows.length) ws['!autofilter'] = { ref: `A6:M${6 + rows.length}` };
+      ws['!freeze'] = { xSplit: 0, ySplit: 6 };
+
+      // Định dạng cơ bản tương thích với SheetJS Community: số thứ tự/cột rộng/merge/filter.
+      if (ws.A1) ws.A1.s = { font: { bold: true, sz: 15 }, alignment: { horizontal: 'center' } };
+      if (ws.A3) ws.A3.s = { font: { bold: true } };
+      for (let c=0;c<headers.length;c++) {
+        const cell = ws[XLSX.utils.encode_cell({r:5,c})];
+        if (cell) cell.s = { font: { bold: true } };
+      }
+      XLSX.utils.book_append_sheet(wb, ws, 'Báo cáo hàng ngày');
+    }
+
+    function buildWorkerSheet(wb) {
+      const rows = [];
+      Object.values(db).forEach(room => {
+        (room.workers || []).forEach(w => rows.push({
+          'Mã NV': w.empId || '',
+          'Họ và Tên': w.name || '',
+          'CCCD': w.idCard || '',
+          'Giới tính': w.gender || '',
+          'Ngày sinh': w.dob || '',
+          'SĐT': w.phone || '',
+          'Quê quán/Địa chỉ': w.address || '',
+          'Dãy phòng': room.id || '',
+          'Ngày vào': w.joinDate || '',
+          'Ngày nghỉ': w.leaveDate || '',
+          'Ghi chú': w.note || ''
+        }));
+      });
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [12,24,18,12,14,15,28,14,14,14,30].map(w=>({wch:w}));
+      if (rows.length) ws['!autofilter'] = { ref: `A1:K${rows.length+1}` };
+      ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+      XLSX.utils.book_append_sheet(wb, ws, 'Danh sách công nhân');
+    }
+
+    function buildRoomSheet(wb) {
+      const rows = Object.values(db).map(r => ({
+        'Phòng': r.id,
+        'Khu vực': r.area,
+        'Số người': Array.isArray(r.workers) ? r.workers.length : (r._cachedCount || 0),
+        'Sức chứa': CAPACITY,
+        'Trạng thái': r.isLocked ? 'Khóa' : 'Đang sử dụng',
+        'Báo xử lý': (r.damageReport || []).join(', '),
+        'Ghi chú': r.customNote || '',
+        'Biến động': r.isModified ? 'Có' : 'Không'
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [12,12,12,12,16,35,35,12].map(w=>({wch:w}));
+      if (rows.length) ws['!autofilter'] = { ref: `A1:H${rows.length+1}` };
+      XLSX.utils.book_append_sheet(wb, ws, 'Danh sách phòng');
+    }
+
+    function buildRetiredSheet(wb) {
+      const rows = (Array.isArray(retiredList) ? retiredList : []).map(w => ({
+        'Mã NV': w.empId || '', 'Họ và Tên': w.name || '', 'CCCD': w.idCard || '',
+        'Phòng cũ': w.room || '', 'Ngày vào': w.joinDate || '', 'Ngày nghỉ': w.retireDate || w.leaveDate || ''
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [12,24,18,14,14,14].map(w=>({wch:w}));
+      if (rows.length) ws['!autofilter'] = { ref: `A1:F${rows.length+1}` };
+      XLSX.utils.book_append_sheet(wb, ws, 'Hồ sơ nghỉ việc');
+    }
+
+    function buildDamageSheet(wb) {
+      const rows = [];
+      Object.values(db).forEach(r => {
+        if ((r.damageReport || []).length) rows.push({ 'Phòng':r.id, 'Khu vực':r.area, 'Hạng mục xử lý':r.damageReport.join(', '), 'Ghi chú':r.customNote || '' });
+      });
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [12,12,40,35].map(w=>({wch:w}));
+      if (rows.length) ws['!autofilter'] = { ref: `A1:D${rows.length+1}` };
+      XLSX.utils.book_append_sheet(wb, ws, 'Báo phòng bẩn - Hỏng');
+    }
+
+    function buildAuditSheet(wb) {
+      const rows = (Array.isArray(logs) ? logs : []).map(l => ({
+        'Thời gian': l.time || '', 'Người thao tác': l.user || '', 'Hành động': l.action || '', 'Chi tiết': l.detail || ''
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [22,24,22,60].map(w=>({wch:w}));
+      if (rows.length) ws['!autofilter'] = { ref: `A1:D${rows.length+1}` };
+      XLSX.utils.book_append_sheet(wb, ws, 'Nhật ký quản trị');
+    }
+
+    function downloadWorkbook(wb, filename) {
+      XLSX.writeFile(wb, filename, { bookType: 'xlsx', compression: true });
+    }
+
+    function exportDataExcel() {
+      updateDashboardStats();
+      const wb = XLSX.utils.book_new();
+      buildDailyReportSheet(wb);
+      buildWorkerSheet(wb);
+      buildRoomSheet(wb);
+      buildRetiredSheet(wb);
+      buildDamageSheet(wb);
+      downloadWorkbook(wb, `LangVan_XuatExcel_${getLocalDateISO()}.xlsx`);
+      recordLog('Xuất Excel', 'Xuất dữ liệu và báo cáo hàng ngày');
+    }
+
+    function adminExportBackupExcel() {
+      updateDashboardStats();
+      const wb = XLSX.utils.book_new();
+      // Báo cáo hàng ngày luôn đứng đầu file lưu trữ quản trị.
+      buildDailyReportSheet(wb);
+      buildWorkerSheet(wb);
+      buildRoomSheet(wb);
+      buildRetiredSheet(wb);
+      buildDamageSheet(wb);
+      buildAuditSheet(wb);
+      downloadWorkbook(wb, `LangVan_LuuTru_QuanTri_${getLocalDateISO()}.xlsx`);
+      recordLog('Xuất lưu trữ quản trị', 'Xuất toàn bộ dữ liệu kèm báo cáo hàng ngày');
+    }
+
+    function exportAuditLogsExcel() {
+      const wb = XLSX.utils.book_new();
+      buildAuditSheet(wb);
+      downloadWorkbook(wb, `LangVan_AuditLogs_${getLocalDateISO()}.xlsx`);
+    }
+
+    // ==================== 8. LAZY LOAD CHI TIẾT PHÒNG ====================
+    async function openRoomModal(roomId) {
+      if (!db[roomId]) return;
+      curRoomId = roomId;
+      const room = db[roomId];
+
+      document.getElementById('roomModalTitle').textContent = `${room.id} (${room.area}) - ${room.workers.length}/${CAPACITY}`;
+      const lockBtn = document.getElementById('btnLock');
+      lockBtn.textContent = room.isLocked ? '🔓 Mở phòng' : '🔒 Khóa làm kho';
+      updateDamageTagButtons();
+      renderWorkersInRoom();
+      
+      document.getElementById('roomInputContainer').style.display = 'none';
+      openModal('roomModal');
+    }
+
+    function toggleWorkerForm() {
+      const form = document.getElementById('roomInputContainer');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function renderWorkersInRoom() {
+      const room = db[curRoomId];
+      if (!room) return;
+      const tbody = document.getElementById('roomWorkersBody');
+      const date = document.getElementById('attendanceDateInput').value || getLocalDateISO();
+      document.getElementById('curRoomCount').textContent = room.workers.length;
+
+      if (!room.workers.length) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#64748b;padding:14px;">Phòng hiện đang trống.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = room.workers.map((w, idx) => {
+        const att = w.attendanceHistory?.[date];
+        let badge = '<span class="att-badge att-none">-</span>';
+        if (att === true) badge = '<span class="att-badge att-present">Có</span>';
+        if (att === false) badge = '<span class="att-badge att-absent">Vắng</span>';
+
+        return `
+          <tr>
+            <td>${escapeHtml(w.empId || '-')}</td>
+            <td><b class="${w.gender === 'Nữ' ? 'female-row' : ''}" ondblclick="editWorkerName(${idx})" title="Nhấp đúp để sửa">${escapeHtml(w.name)}</b></td>
+            <td>${escapeHtml(maskCccdNumber(w.idCard))}</td>
+            <td>${escapeHtml(w.address || '-')}</td>
+            <td>
+              <div class="att-box">
+                ${badge}
+                <button class="btn-att-action btn-att-yes" onclick="setWorkerAtt(${idx},true)">+ Có</button>
+                <button class="btn-att-action btn-att-no" onclick="setWorkerAtt(${idx},false)">- Vắng</button>
+                <button class="btn-att-action btn-att-reset" onclick="setWorkerAtt(${idx},null)">↺</button>
+              </div>
+            </td>
+            <td><span ondblclick="editWorkerNote(${idx})" style="cursor:pointer;">${escapeHtml(w.note || '-')}</span></td>
+            <td><button class="btn" style="background:#0284c7;color:#fff;padding:4px 8px;font-weight:bold;" onclick="openImmediateTransferTab(${idx})">Chuyển</button></td>
+            <td><button class="btn" style="background:#dc2626;color:#fff;padding:4px 8px;" onclick="confirmRetireWorker(${idx})">Nghỉ</button></td>
+          </tr>`;
+      }).join('');
+    }
+
+    async function addWorkerDirect() {
+      const room = db[curRoomId];
+      if (!room) return alert("Không xác định được phòng!");
+      const name = document.getElementById('rName').value.trim();
+      const idCard = normalizeIdCard(document.getElementById('rIdCard').value);
+      if (!name || !idCard) return alert("Vui lòng điền đủ Họ Tên và Số CCCD!");
+      if (isIdCardDuplicate(idCard)) return alert("Số CCCD này đã tồn tại trong lán trại!");
+
+      const newWorker = {
+        empId: document.getElementById('rEmpId').value.trim(),
+        name, idCard,
+        gender: document.getElementById('rGender').value,
+        dob: document.getElementById('rDob').value.trim(),
+        phone: document.getElementById('rPhone').value.trim(),
+        address: document.getElementById('rAddress').value.trim(),
+        note: document.getElementById('rNote').value.trim(),
+        attendanceHistory: {},
+        joinDate: getTodayVN(),
+        leaveDate: '',
+        updatedAt: Date.now()
+      };
+
+      if (room.workers.length >= CAPACITY) return alert("Phòng đã đủ 20 công nhân!");
+      room.workers.push(newWorker);
+      room.isModified = true;
+      room.updatedAt = Date.now();
+      
+      syncSingleRoom(curRoomId);
+      recordLog("Thêm trực tiếp", `Thêm ${name} vào ${curRoomId}`);
+      persistLocalState();
+      renderWorkersInRoom();
+      renderRooms();
+      ['rEmpId', 'rName', 'rIdCard', 'rDob', 'rPhone', 'rAddress', 'rNote'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+      });
+      document.getElementById('roomInputContainer').style.display = 'none';
+    }
+
+    function setWorkerAtt(idx, status) {
+      const date = document.getElementById('attendanceDateInput').value || getLocalDateISO();
+      const room = db[curRoomId];
+      if (!room || !room.workers[idx]) return;
+
+      const now = Date.now();
+      const worker = room.workers[idx];
+      worker.attendanceHistory = worker.attendanceHistory || {};
+      
+      if (status === null) delete worker.attendanceHistory[date];
+      else worker.attendanceHistory[date] = status;
+
+      worker.updatedAt = now;
+      room.updatedAt = now;
+      room.isModified = true;
+
+      syncSingleRoom(curRoomId);
+      renderWorkersInRoom();
+      renderRooms();
+    }
+
+    function batchSetAttendance(status) {
+      const date = document.getElementById('attendanceDateInput').value || getLocalDateISO();
+      const room = db[curRoomId];
+      if (!room) return;
+
+      const now = Date.now();
+      (room.workers || []).forEach(w => {
+        w.attendanceHistory = w.attendanceHistory || {};
+        w.attendanceHistory[date] = status;
+        w.updatedAt = now;
+      });
+
+      room.updatedAt = now;
+      room.isModified = true;
+
+      syncSingleRoom(curRoomId);
+      renderWorkersInRoom();
+      renderRooms();
+    }
+
+    function batchClearAttendance() {
+      const date = document.getElementById('attendanceDateInput').value || getLocalDateISO();
+      const room = db[curRoomId];
+      if (!room) return;
+
+      const now = Date.now();
+      (room.workers || []).forEach(w => {
+        if (w.attendanceHistory) delete w.attendanceHistory[date];
+        w.updatedAt = now;
+      });
+
+      room.updatedAt = now;
+      syncSingleRoom(curRoomId);
+      renderWorkersInRoom();
+      renderRooms();
+    }
+
+    function toggleDamageTag(tag) {
+      const room = db[curRoomId];
+      if (!room) return;
+      room.damageReport = room.damageReport || [];
+      const idx = room.damageReport.indexOf(tag);
+      if (idx > -1) room.damageReport.splice(idx, 1);
+      else { room.damageReport.push(tag); room.isModified = true; }
+      room.updatedAt = Date.now();
+
+      syncSingleRoom(curRoomId);
+      updateDamageTagButtons();
+      renderRooms();
+    }
+
+    function updateDamageTagButtons() {
+      const room = db[curRoomId];
+      if (!room) return;
+      const tags = room.damageReport || [];
+      const tagMap = {
+        'Ban': 'Phòng bẩn / Chưa dọn',
+        'Quat': 'Hỏng Quạt',
+        'Dien': 'Hỏng Điện',
+        'DieuHoa': 'Hỏng Điều Hòa',
+        'OCam': 'Hỏng Ổ Cắm'
+      };
+      Object.keys(tagMap).forEach(key => {
+        const fullTag = tagMap[key];
+        const el = document.getElementById('tag_' + key);
+        if (el) {
+          if (key === 'Ban') {
+            el.className = tags.includes(fullTag) ? 'tag-btn tag-btn-warning active' : 'tag-btn tag-btn-warning';
+          } else {
+            el.className = tags.includes(fullTag) ? 'tag-btn active' : 'tag-btn';
+          }
+        }
+      });
+    }
+
+    function toggleLockRoom() {
+      const room = db[curRoomId];
+      if (!room) return;
+      if (room.workers.length > 0 && !room.isLocked) return alert("Chỉ có thể khóa khi phòng trống!");
+      room.isLocked = !room.isLocked;
+      room.updatedAt = Date.now();
+
+      syncSingleRoom(curRoomId);
+      openRoomModal(curRoomId);
+      renderRooms();
+    }
+
+    function confirmRetireWorker(idx) {
+      const worker = db[curRoomId].workers[idx];
+      if (!confirm(`XÁC NHẬN NGHỈ VIỆC: ${worker.name}?`)) return;
+      const removed = db[curRoomId].workers.splice(idx, 1)[0];
+      const retireDateStr = getTodayVN();
+      
+      const retireItem = {
+        empId: removed.empId || "-",
+        name: removed.name,
+        idCard: removed.idCard,
+        room: curRoomId,
+        joinDate: removed.joinDate || "",
+        retireDate: retireDateStr
+      };
+      retiredList.unshift(retireItem);
+      if (window.firestoreDb && navigator.onLine) {
+        window.firestoreDb.ref('retired').push(retireItem);
+      }
+      db[curRoomId].isModified = true;
+      db[curRoomId].updatedAt = Date.now();
+
+      recordLog("Nghỉ việc", `Báo giảm: ${removed.name}`);
+      syncSingleRoom(curRoomId);
+      renderWorkersInRoom();
+      renderRooms();
+    }
+
+    function editWorkerName(idx) {
+      const room = db[curRoomId], worker = room?.workers?.[idx];
+      if (!worker) return;
+      document.getElementById('editWorkerIdx').value = idx;
+      document.getElementById('eEmpId').value = worker.empId || '';
+      document.getElementById('eName').value = worker.name || '';
+      document.getElementById('eGender').value = worker.gender === 'Nữ' ? 'Nữ' : 'Nam';
+      document.getElementById('eIdCard').value = worker.idCard || '';
+      document.getElementById('eDob').value = worker.dob || '';
+      document.getElementById('ePhone').value = worker.phone || '';
+      document.getElementById('eAddress').value = worker.address || '';
+      document.getElementById('eNote').value = worker.note || '';
+      document.getElementById('eJoinDate').value = worker.joinDate || '';
+      document.getElementById('eLeaveDate').value = worker.leaveDate || '';
+      openModal('editWorkerModal');
+      setTimeout(() => document.getElementById('eName').focus(), 50);
+    }
+
+    function saveWorkerAllEdit() {
+      const room = db[curRoomId];
+      const idx = Number(document.getElementById('editWorkerIdx').value);
+      const worker = room?.workers?.[idx];
+      if (!worker) return;
+      const name = document.getElementById('eName').value.trim();
+      const idCard = normalizeIdCard(document.getElementById('eIdCard').value);
+      if (!name || !idCard) return alert('Họ tên và CCCD không được để trống.');
+
+      worker.empId = document.getElementById('eEmpId').value.trim();
+      worker.name = name;
+      worker.gender = document.getElementById('eGender').value === 'Nữ' ? 'Nữ' : 'Nam';
+      worker.idCard = idCard;
+      worker.dob = document.getElementById('eDob').value.trim();
+      worker.phone = document.getElementById('ePhone').value.trim();
+      worker.address = document.getElementById('eAddress').value.trim();
+      worker.note = document.getElementById('eNote').value.trim();
+      worker.joinDate = document.getElementById('eJoinDate').value.trim();
+      worker.leaveDate = document.getElementById('eLeaveDate').value || '';
+      worker.updatedAt = Date.now();
+
+      normalizeWorker(worker);
+      room.isModified = true;
+      room.updatedAt = Date.now();
+
+      recordLog('Sửa hồ sơ', `Sửa thông tin ${worker.name} tại ${room.id}`);
+      syncSingleRoom(curRoomId);
+      closeModal('editWorkerModal');
+      renderWorkersInRoom();
+      renderRooms();
+    }
+
+    function editWorkerNote(idx) {
+      const room = db[curRoomId], worker = room?.workers?.[idx];
+      if (!worker) return;
+      const next = prompt('Sửa GHI CHÚ:', worker.note || '');
+      if (next === null) return;
+      worker.note = next.trim();
+      worker.updatedAt = Date.now();
+      room.isModified = true;
+      room.updatedAt = Date.now();
+
+      syncSingleRoom(curRoomId);
+      renderWorkersInRoom();
+      renderRooms();
+    }
+
+    // ==================== 9. ĐIỀU CHUYỂN PHÒNG ====================
+    function openImmediateTransferTab(idx) {
+      const room = db[curRoomId];
+      if (!room || !room.workers[idx]) return;
+
+      transferringWorkerIdx = idx;
+      const worker = room.workers[idx];
+      document.getElementById('transferWorkerName').innerText = `${worker.name} (${worker.empId || '-'})`;
+      document.getElementById('transferCurrentRoom').innerText = curRoomId;
+      
+      const rowSelect = document.getElementById('transferRowSelect');
+      if (rowSelect) rowSelect.value = room.row;
+      
+      updateTransferRoomList();
+      openModal('transferModal');
+    }
+
+    function updateTransferRoomList() {
+      const row = parseInt(document.getElementById('transferRowSelect').value);
+      const sel = document.getElementById('transferTargetSelect');
+      sel.innerHTML = "";
+      
+      let hasAvailableRoom = false;
+      Object.values(db).forEach(r => {
+        const count = (r.workers && r.workers.length > 0) ? r.workers.length : (r._cachedCount || 0);
+        if (r.row === row && !r.isLocked && r.id !== curRoomId && count < CAPACITY) {
+          const opt = document.createElement('option');
+          opt.value = r.id;
+          opt.innerText = `${r.id} (Còn ${CAPACITY - count} chỗ)`;
+          sel.appendChild(opt);
+          hasAvailableRoom = true;
+        }
+      });
+
+      if (!hasAvailableRoom) {
+        const opt = document.createElement('option');
+        opt.value = "";
+        opt.innerText = "Dãy này hiện đã hết chỗ trống";
+        sel.appendChild(opt);
+      }
+    }
+
+    async function confirmTransferWorker() {
+      const targetId = document.getElementById('transferTargetSelect').value;
+      if (!targetId || !db[targetId]) return alert("Vui lòng chọn phòng đến hợp lệ!");
+      if (!db[curRoomId] || !db[curRoomId].workers[transferringWorkerIdx]) return;
+
+      const worker = db[curRoomId].workers.splice(transferringWorkerIdx, 1)[0];
+      worker.updatedAt = Date.now();
+      db[targetId].workers = db[targetId].workers || [];
+      db[targetId].workers.push(worker);
+      delete db[targetId]._cachedCount;
+      db[curRoomId].isModified = true;
+      db[targetId].isModified = true;
+
+      syncSingleRoom(curRoomId);
+      syncSingleRoom(targetId);
+
+      recordLog("Điều chuyển", `Chuyển ${worker.name} từ ${curRoomId} sang ${targetId}`);
+      persistLocalState();
+      closeModal('transferModal');
+      renderWorkersInRoom();
+      renderRooms();
+      alert(`Đã chuyển thành công ${worker.name} sang phòng ${targetId}!`);
+    }
+
+    // ==================== 10. NHẬP FILE EXCEL ====================
+    function openImportModal() {
+      toggleImportTarget();
+      openModal('importModal');
+    }
+
+    function toggleImportTarget() {
+      const mode = document.getElementById('importModeSelect').value;
+      document.getElementById('importRowContainer').style.display = mode === 'TARGET_ROW' ? 'flex' : 'none';
+      document.getElementById('importRoomContainer').style.display = mode === 'TARGET_ROOM' ? 'flex' : 'none';
+      document.getElementById('importAreaContainer').style.display = mode === 'TARGET_AREA' ? 'flex' : 'none';
+    }
+
+    function cleanKey(str) {
+      return (str || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+    }
+
+    function handleExcelUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async function(evt) {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const wb = XLSX.read(data, { type: 'array' });
+          const firstSheet = wb.Sheets[wb.SheetNames[0]];
+
+          const rawMatrix = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
+          let headerRowIndex = 0;
+          for (let i = 0; i < Math.min(rawMatrix.length, 15); i++) {
+            const rowStr = rawMatrix[i].map(c => cleanKey(c)).join(" ");
+            if (rowStr.includes("ten") || rowStr.includes("cccd") || rowStr.includes("cmnd") || rowStr.includes("hoten")) {
+              headerRowIndex = i;
+              break;
+            }
+          }
+
+          const rawRows = XLSX.utils.sheet_to_json(firstSheet, { range: headerRowIndex, defval: "" });
+          await allocateWorkersFromExcel(rawRows);
+          closeModal('importModal');
+          e.target.value = "";
+        } catch(err) {
+          alert("Lỗi đọc file Excel: " + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function normalizeGender(value) {
+      const g = String(value ?? '').trim().toLowerCase();
+      const n = g.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return ['nu', 'female', 'f'].includes(n) ? 'Nữ' : 'Nam';
+    }
+
+    async function allocateWorkersFromExcel(rawRows) {
+      const mode = document.getElementById('importModeSelect').value;
+      const targetRow = parseInt(document.getElementById('importRowSelect').value);
+      const targetArea = document.getElementById('importAreaSelect').value;
+      const startRoomId = document.getElementById('importRoomStartSelect').value;
+
+      let candidateRooms = Object.values(db).filter(r => !r.isLocked);
+      if (mode === 'TARGET_ROW') candidateRooms = candidateRooms.filter(r => r.row === targetRow);
+      else if (mode === 'TARGET_AREA') candidateRooms = candidateRooms.filter(r => r.area === targetArea);
+      else if (mode === 'TARGET_ROOM') {
+        let sIdx = candidateRooms.findIndex(r => r.id === startRoomId);
+        if (sIdx !== -1) candidateRooms = candidateRooms.slice(sIdx);
+      }
+
+      let count = 0, rIdx = 0;
+      const today = getTodayVN();
+
+      rawRows.forEach((row, rowIdx) => {
+        let mapped = {};
+        Object.keys(row).forEach(k => mapped[cleanKey(k)] = row[k]);
+
+        let name = "";
+        const nameKeys = ['hovaten', 'hoten', 'ten', 'name', 'fullname', 'nguoio', 'congnhan'];
+        for (let k of nameKeys) {
+          if (mapped[k]) { name = String(mapped[k]).trim(); break; }
+        }
+
+        let idCard = "";
+        const idKeys = ['socccd', 'cccd', 'cmnd', 'sothe', 'id', 'cancuoc', 'cmt', 'soid'];
+        for (let k of idKeys) {
+          if (mapped[k]) {
+            let rawId = String(mapped[k]).trim();
+            if (rawId.includes("e+") || rawId.includes("E+")) rawId = Number(rawId).toFixed(0);
+            idCard = normalizeIdCard(rawId);
+            break;
+          }
+        }
+
+        if (!idCard) {
+          Object.values(row).forEach(val => {
+            let cleanVal = String(val).replace(/\D/g, '');
+            if ((cleanVal.length === 12 || cleanVal.length === 9) && !idCard) idCard = cleanVal;
+          });
+        }
+
+        if ((idCard.length === 12 || idCard.length === 9) && !isIdCardDuplicate(idCard)) {
+          if (!name) name = `CÔNG NHÂN ${rowIdx + 1}`;
+
+          let targetRoom = null;
+          while (rIdx < candidateRooms.length && candidateRooms[rIdx].workers.length >= CAPACITY) rIdx++;
+          targetRoom = candidateRooms[rIdx];
+
+          if (targetRoom && targetRoom.workers.length < CAPACITY && !targetRoom.isLocked) {
+            const newWorker = {
+              empId: String(mapped['manv'] || mapped['manhanvien'] || mapped['mnv'] || '').trim(),
+              name: String(name).trim(),
+              idCard: idCard,
+              gender: normalizeGender(mapped['gioitinh'] || ''),
+              dob: normalizeDateString(mapped['ngaysinh'] || mapped['namsinh'] || mapped['dob'] || ''),
+              phone: String(mapped['sdt'] || mapped['phone'] || mapped['sodienthoai'] || '').trim(),
+              address: String(mapped['diachi'] || mapped['quequan'] || mapped['address'] || '').trim(),
+              note: String(mapped['ghichu'] || mapped['note'] || '').trim(),
+              attendanceHistory: {},
+              joinDate: normalizeDateString(mapped['ngayvao'] || mapped['ngaynhanviec'] || '') || today,
+              leaveDate: normalizeDateString(mapped['ngaynghi'] || mapped['ngaynghiviec'] || ''),
+              updatedAt: Date.now()
+            };
+            targetRoom.workers.push(newWorker);
+            targetRoom.isModified = true;
+            syncSingleRoom(targetRoom.id);
+            count++;
+          }
+        }
+      });
+
+      recordLog("Nhập Excel", `Tiếp nhận ${count} công nhân`);
+      persistLocalState();
+      renderRooms();
+      alert(`ĐÃ NẠP THÀNH CÔNG: Đã tiếp nhận ${count} công nhân!`);
+    }
+
+    // ==================== 11. CAMERA QUÉT MÃ QR ====================
+    function openGlobalScanner() {
+      populateTargetRoomSelects();
+      openModal('globalScanModal');
+      startDirectCamera();
+    }
+
+    async function startDirectCamera() {
+      const video = document.getElementById('camVideo'), msg = document.getElementById('camStatusMsg');
+      if (!video || !msg) return;
+      closeCameraStream();
+      msg.innerText = "Đang kích hoạt camera...";
+
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: currentCameraFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        video.srcObject = localStream;
+        await video.play();
+        isScanning = true;
+        msg.innerText = "Đặt mã QR vào ô vuông xanh";
+        scanVideoFrame();
+      } catch (e) {
+        msg.innerText = "Không mở được camera. Dùng 'Tải Ảnh CCCD'.";
+      }
+    }
+
+    function scanVideoFrame() {
+      if (!isScanning) return;
+      const video = document.getElementById('camVideo'), canvas = document.getElementById('qrCanvas');
+      if (!video || !canvas || scanTimer) return;
+
+      scanTimer = setTimeout(() => {
+        scanTimer = null;
+        if (!isScanning) return;
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0) {
+          const vW = video.videoWidth, vH = video.videoHeight;
+          const boxSize = Math.round(Math.min(vW, vH) * 0.65);
+          canvas.width = boxSize;
+          canvas.height = boxSize;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(video, (vW - boxSize)/2, (vH - boxSize)/2, boxSize, boxSize, 0, 0, boxSize, boxSize);
+
+          try {
+            const imageData = ctx.getImageData(0, 0, boxSize, boxSize);
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            if (code?.data) {
+              isScanning = false;
+              parseCccdData(code.data);
+              return;
+            }
+          } catch (e) {}
+        }
+        scanVideoFrame();
+      }, 100);
+    }
+
+    function toggleCameraFacing() {
+      closeCameraStream();
+      currentCameraFacing = currentCameraFacing === "environment" ? "user" : "environment";
+      startDirectCamera();
+    }
+
+    function closeCameraStream() {
+      isScanning = false;
+      if (scanTimer) clearTimeout(scanTimer);
+      if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+        localStream = null;
+      }
+    }
+
+    function closeGlobalScanner() {
+      closeCameraStream();
+      closeModal('globalScanModal');
+    }
+
+    function parseCccdData(rawText) {
+      const parts = String(rawText || '').replace(/^\uFEFF/, '').trim().split('|');
+      if (parts.length < 5) return alert("Không nhận diện được định dạng CCCD.");
+      const cardNo = normalizeIdCard(parts[0]);
+      document.getElementById('gIdCard').value = cardNo;
+      document.getElementById('gName').value = parts[2] || parts[1] || '';
+      document.getElementById('gDob').value = normalizeDateString(parts[3] || parts[2] || '');
+      document.getElementById('gGender').value = /nu|nữ/i.test(parts[4] || '') ? 'Nữ' : 'Nam';
+      document.getElementById('gAddress').value = parts[5] || parts[4] || '';
+      alert("Đã nhận diện: " + (parts[2] || parts[1]));
+    }
+
+    function handleFileCCCDQuick(input) {
+      if (!input.files || !input.files.length) return;
+      const file = input.files[0];
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.getElementById('qrCanvas');
+          canvas.width = img.width; canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const imgData = ctx.getImageData(0, 0, img.width, img.height);
+          const code = jsQR(imgData.data, imgData.width, imgData.height);
+          if (code && code.data) parseCccdData(code.data);
+          else alert("Không tìm thấy mã QR trên tệp ảnh.");
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+      input.value = "";
+    }
+
+    async function saveQuickScanWorker() {
+      const rid = document.getElementById('gTargetRoom').value;
+      if (!rid || !db[rid]) return alert("Chưa chọn phòng!");
+      const name = document.getElementById('gName').value.trim();
+      const idCard = normalizeIdCard(document.getElementById('gIdCard').value);
+      if (!name || !idCard) return alert("Thiếu Tên hoặc CCCD!");
+      if (isIdCardDuplicate(idCard)) return alert("Số CCCD này đã tồn tại!");
+
+      const newWorker = {
+        empId: document.getElementById('gEmpId').value.trim(),
+        name, idCard,
+        gender: document.getElementById('gGender').value,
+        dob: document.getElementById('gDob').value.trim(),
+        phone: document.getElementById('gPhone').value.trim(),
+        address: document.getElementById('gAddress').value.trim(),
+        note: document.getElementById('gNote').value.trim(),
+        attendanceHistory: {},
+        joinDate: getTodayVN(),
+        leaveDate: '',
+        updatedAt: Date.now()
+      };
+
+      const room = db[rid];
+      if (room.workers.length >= CAPACITY) return alert("Phòng đã đầy!");
+      room.workers.push(newWorker);
+      room.isModified = true;
+      syncSingleRoom(rid);
+      
+      recordLog("Thêm nhanh", `Thêm ${name} vào ${rid}`);
+      persistLocalState();
+      renderRooms();
+      closeGlobalScanner();
+      alert(`Đã xếp ${name} vào phòng ${rid}!`);
+    }
+
+    // ==================== 12. QUẢN TRỊ & TIỆN ÍCH DỮ LIỆU ====================
+    function checkAbsenceAlerts() {
+      const alertBox = document.getElementById('adminAbsenceAlertBox');
+      const list = document.getElementById('adminAbsenceList');
+      const warned = [];
+      Object.values(db).forEach(r => {
+        (r.workers || []).forEach(w => {
+          let count = Object.values(w.attendanceHistory || {}).filter(v => v === false).length;
+          if (count >= 3) warned.push({ name: w.name, empId: w.empId, room: r.id, count });
+        });
+      });
+      if (warned.length > 0) {
+        alertBox.style.display = 'block';
+        list.innerHTML = warned.map(w => `<div>• <b>${escapeHtml(w.name)}</b> (${escapeHtml(w.empId || '-')}) - Phòng <b>${escapeHtml(w.room)}</b>: <span style="color:red; font-weight:bold;">Vắng ${w.count} ngày</span></div>`).join('');
+      } else {
+        alertBox.style.display = 'none';
+      }
+    }
+
+    function adminViewLogs() {
+      const container = document.getElementById('adminLogList');
+      container.innerHTML = logs.length === 0 ? "Chưa có lưu vết nào." : logs.map(l =>
+        `<div>[${escapeHtml(l.time)}] <b>${escapeHtml(l.user)}</b>: ${escapeHtml(l.action)} <i>(${escapeHtml(l.detail)})</i></div>`
+      ).join('');
+    }
+
+    function openSyncInterface() {
+      const syncBox = document.getElementById('syncBox');
+      syncBox.style.display = syncBox.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function exportSyncFile() {
+      const syncData = JSON.stringify({ db, logs, retiredList, timestamp: new Date().toISOString() });
+      const blob = new Blob([syncData], { type: "application/json" });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `DongBo_LangVan_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+    }
+
+    function importSyncFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          const imported = JSON.parse(evt.target.result);
+          if (imported.db) {
+            db = imported.db;
+            logs = imported.logs || [];
+            retiredList = imported.retiredList || [];
+            normalizeDatabase();
+            persistLocalState();
+            renderRooms();
+            alert("Đã nạp file đồng bộ thành công!");
+            closeModal('adminModal');
+          }
+        } catch(err) { alert("Lỗi: " + err.message); }
+      };
+      reader.readAsText(file);
+    }
+
+    function openRetiredHistoryModal() {
+      const tbody = document.getElementById('retiredWorkersBody');
+      tbody.innerHTML = retiredList.length === 0 ? `<tr><td colspan="6" style="text-align:center; color:#64748b;">Chưa có hồ sơ nghỉ việc.</td></tr>` :
+        retiredList.map(w => `<tr><td>${escapeHtml(w.empId || '-')}</td><td>${escapeHtml(w.name)}</td><td>${escapeHtml(maskCccdNumber(w.idCard))}</td><td>${escapeHtml(w.room)}</td><td>${escapeHtml(w.joinDate || '-')}</td><td>${escapeHtml(w.retireDate)}</td></tr>`).join('');
+      openModal('retiredModal');
+    }
+
+    function openDamageReportSummary() {
+      const tbody = document.getElementById('damageSummaryBody');
+      let rows = "";
+      Object.values(db).forEach(r => {
+        if (r.damageReport && r.damageReport.length > 0) {
+          const cleanReport = r.damageReport.map(item => item === 'Phòng bẩn / Chưa dọn' ? `<span style="color:#d97706; font-weight:bold;">🧹 ${item}</span>` : `<span style="color:red; font-weight:bold;">🛠 ${item}</span>`).join(', ');
+          rows += `<tr><td><b>${r.id}</b></td><td>${r.area}</td><td>${cleanReport}</td><td><button onclick="fixRoomDamage('${r.id}')" class="btn" style="background:#16a34a; color:white; font-size:0.65rem; padding:2px 5px;">Đã Xử Lý Xong</button></td></tr>`;
+        }
+      });
+      tbody.innerHTML = rows || `<tr><td colspan="4" style="text-align:center; color:#16a34a; font-weight:bold;">Tất cả phòng đều sạch sẽ và hoạt động tốt!</td></tr>`;
+      openModal('damageSummaryModal');
+    }
+
+    function fixRoomDamage(roomId) {
+      if (db[roomId]) {
+        db[roomId].damageReport = [];
+        db[roomId].isModified = true;
+        syncSingleRoom(roomId);
+        openDamageReportSummary();
+        renderRooms();
+      }
+    }
+
+    async function adminClearAll() {
+      if (!confirm("CẢNH BÁO: Bạn có chắc chắn muốn xóa sạch toàn bộ dữ liệu?")) return;
+      localStorage.clear();
+      db = {}; logs = []; retiredList = []; syncQueue = []; dailyReports = {};
+      normalizeDatabase();
+      await Promise.all([
+        idbSet('db', db),
+        idbSet('logs', logs),
+        idbSet('retiredList', retiredList),
+        idbSet('dailyReports', dailyReports),
+        idbSet('syncQueue', syncQueue)
+      ]);
+      renderRooms();
+      closeModal('adminModal');
+      alert("Đã xóa trắng dữ liệu và đặt lại hệ thống.");
+    }
+  </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Lán Trại Làng Vân - Quản Lý 7000 Công Nhân - Báo cáo hàng ngày</title>
   <meta name="theme-color" content="#1e3a8a">
   <meta name="mobile-web-app-capable" content="yes">
