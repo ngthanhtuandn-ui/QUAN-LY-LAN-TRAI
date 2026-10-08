@@ -11,7 +11,8 @@
   <meta name="apple-mobile-web-app-title" content="Làng Vân">
   <link rel="manifest" href="langvan-manifest.json">
   <!-- Thư viện SheetJS & jsQR -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <!-- Firebase SDK v8 -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -148,7 +149,7 @@
       display: flex; justify-content: center; align-items: flex-end; 
     }
     .scan-guide-box::after {
-      content: "ĐẶT MÃ QR VÀO ĐÂY";
+      content: "QR hoặc MẶT TRƯỚC CCCD";
       position: absolute; bottom: -24px; left: 0; right: 0;
       color: #22c55e; font-size: 11px; font-weight: 800; text-align: center;
       text-shadow: 0 1px 2px #000;
@@ -520,6 +521,9 @@
       </div>
       <canvas id="qrCanvas" style="display:none;"></canvas>
       <div id="camStatusMsg" style="font-size:0.75rem; color:var(--primary); font-weight:bold; margin: 6px 0; text-align:center;">Đang khởi tạo camera...</div>
+      <div style="font-size:.68rem;color:#64748b;text-align:center;margin:-2px 0 7px;">
+        ⚡ Ưu tiên QR tốc độ cao → nếu không đọc được sẽ tự chuyển OCR và chỉ lấy <b>CCCD + Họ tên + Ngày sinh</b>.
+      </div>
 
       <div style="display:flex; justify-content:center; gap:8px; margin:8px 0; flex-wrap:wrap;">
         <button onclick="toggleCameraFacing()" class="btn" style="background:#4f46e5; color:white; padding: 8px 14px; font-weight:bold;">🔄 Đổi Cam</button>
@@ -694,6 +698,23 @@
     let persistDebounceTimer = null;
     let currentRoomRef = null;
 
+    // Bộ quét CCCD thế hệ mới:
+    // 1) BarcodeDetector (nếu trình duyệt hỗ trợ) -> cực nhanh
+    // 2) jsQR -> tương thích rộng
+    // 3) OCR Tesseract -> chỉ kích hoạt khi QR không đọc được
+    let cccdScanStartedAt = 0;
+    let cccdLastOcrAt = 0;
+    let cccdOcrRunning = false;
+    let cccdOcrReady = false;
+    let cccdOcrWorker = null;
+    let cccdLastFingerprint = "";
+    let cccdOcrLoadPromise = null;
+
+    // Kho báo cáo ngày: lưu snapshot KPI để không mất lịch sử.
+    let dailyReports = [];
+    let dailyReportWriteTimer = null;
+    let dailyReportLastSignature = "";
+
     let searchDebounceTimer = null;
     let isRemoteRoomsFetched = false;
     let isSyncingAllRooms = false;
@@ -755,6 +776,7 @@
         let localDb = await idbGet('db');
         let localLogs = await idbGet('logs');
         let localRetired = await idbGet('retiredList');
+        let localDailyReports = await idbGet('dailyReports');
         let localTs = await idbGet('lastSyncTimestamp');
 
         if (!localDb) {
@@ -775,9 +797,10 @@
         db = localDb && typeof localDb === 'object' ? localDb : {};
         logs = Array.isArray(localLogs) ? localLogs : [];
         retiredList = Array.isArray(localRetired) ? localRetired : [];
+        dailyReports = Array.isArray(localDailyReports) ? localDailyReports : [];
         lastSyncTimestamp = Number(localTs) || 0;
       } catch (err) {
-        db = {}; logs = []; retiredList = []; lastSyncTimestamp = 0;
+        db = {}; logs = []; retiredList = []; dailyReports = []; lastSyncTimestamp = 0;
       }
       normalizeDatabase();
     }
@@ -790,6 +813,7 @@
             idbSet('db', db),
             idbSet('logs', logs.slice(0, 500)),
             idbSet('retiredList', retiredList),
+            idbSet('dailyReports', dailyReports),
             idbSet('lastSyncTimestamp', lastSyncTimestamp)
           ]);
         } catch (e) {
@@ -1616,6 +1640,278 @@
       return true;
     }
 
+    // ==================== BÁO CÁO NGÀY ====================
+    function parseAnyDateToISO(value) {
+      if (value === null || value === undefined || value === "") return "";
+      if (value instanceof Date && !isNaN(value)) {
+        return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`;
+      }
+      const raw = String(value).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+      const m = raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
+      if (m) return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
+      return "";
+    }
+
+    function getWorkerJoinISO(w) {
+      return parseAnyDateToISO(w?.joinDate || w?.entryDate || w?.ngayVao || w?.checkInDate || "");
+    }
+
+    function getWorkerLeaveISO(w) {
+      return parseAnyDateToISO(w?.retireDate || w?.leaveDate || w?.ngayNghi || w?.retiredDate || w?.ngayRa || w?.checkOutDate || "");
+    }
+
+    function getReportGender(w) {
+      const g = String(w?.gender || w?.gioiTinh || "").trim().toLowerCase();
+      return g === "nữ" || g === "nu" || g === "female" ? "Nữ" : "Nam";
+    }
+
+    function allKnownWorkersForReport() {
+      const active = [];
+      Object.values(db).forEach(r => (r.workers || []).forEach(w => {
+        active.push({
+          ...w,
+          __room: r.id,
+          __join: getWorkerJoinISO(w),
+          __leave: getWorkerLeaveISO(w)
+        });
+      }));
+
+      const retired = (Array.isArray(retiredList) ? retiredList : []).map(w => ({
+        ...w,
+        __room: w.room || w.oldRoom || "",
+        __join: getWorkerJoinISO(w),
+        __leave: getWorkerLeaveISO(w)
+      }));
+
+      return active.concat(retired);
+    }
+
+    function buildDailyReport(dateISO) {
+      const workers = allKnownWorkersForReport();
+      let total = 0, entered = 0, retired = 0, male = 0, female = 0;
+
+      workers.forEach(w => {
+        const join = w.__join;
+        const leave = w.__leave;
+        if (join === dateISO) entered++;
+        if (leave === dateISO) retired++;
+
+        // Quân số cuối ngày = đã vào không muộn hơn ngày xem và chưa nghỉ trước/ngày đó.
+        if (join && join <= dateISO && (!leave || leave > dateISO)) {
+          total++;
+          if (getReportGender(w) === "Nữ") female++; else male++;
+        }
+      });
+
+      const capacity = CAPACITY * Object.keys(db).length;
+      const occupancy = capacity ? Math.round((total / capacity) * 1000) / 10 : 0;
+      return {
+        date: dateISO,
+        performance: occupancy,
+        total,
+        capacity,
+        entered,
+        retired,
+        male,
+        female,
+        diff: entered - retired,
+        dirtyRooms: Object.values(db).filter(r => (r.damageReport || []).includes("Phòng bẩn / Chưa dọn")).length,
+        modifiedRooms: Object.values(db).filter(r => r.isModified).length,
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    function refreshDailyReportHistory(force = false) {
+      const today = getLocalDateISO();
+      const stateSignature = [
+        today,
+        Object.values(db).reduce((sum, r) => sum + (Number(r.updatedAt) || 0) + ((r.workers || []).length * 17), 0),
+        (Array.isArray(retiredList) ? retiredList.length : 0)
+      ].join("|");
+      if (!force && stateSignature === dailyReportLastSignature) return;
+      dailyReportLastSignature = stateSignature;
+
+      const dates = new Set((dailyReports || []).map(x => x.date).filter(Boolean));
+      dates.add(today);
+      allKnownWorkersForReport().forEach(w => {
+        if (w.__join) dates.add(w.__join);
+        if (w.__leave) dates.add(w.__leave);
+      });
+
+      const sorted = [...dates].sort();
+      dailyReports = sorted.map(d => {
+        const old = (dailyReports || []).find(x => x.date === d);
+        const fresh = buildDailyReport(d);
+        // Tính lại toàn bộ ngày từ dữ liệu gốc để sửa dứt điểm các số Vào/Nghỉ đã lưu sai trước đây.
+        return fresh;
+      });
+
+      if (dailyReports.length > 3650) dailyReports = dailyReports.slice(-3650);
+      clearTimeout(dailyReportWriteTimer);
+      dailyReportWriteTimer = setTimeout(() => {
+        idbSet('dailyReports', dailyReports).catch(()=>{});
+        if (window.firestoreDb && navigator.onLine) {
+          const todayReport = dailyReports.find(x => x.date === today);
+          if (todayReport) window.firestoreDb.ref(`dailyReports/${today}`).set(todayReport).catch(()=>{});
+        }
+      }, 250);
+    }
+
+    function formatReportDate(iso) {
+      const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : iso || "";
+    }
+
+    function applyExcelCellStyle(cell, style) {
+      if (cell) cell.s = style;
+    }
+
+    function addDailyReportSheet(wb) {
+      refreshDailyReportHistory(true);
+
+      const reports = [...dailyReports].sort((a,b) => String(a.date).localeCompare(String(b.date)));
+      const headers = ["Ngày","Hiệu suất","Sức chứa","Vào","Nghỉ","Nam","Nữ","Biến động","Quân số cuối ngày","Phòng bẩn","Phòng biến động","Cập nhật"];
+      const todayDisplay = formatReportDate(getLocalDateISO());
+      const aoa = [
+        ["BÁO CÁO THỐNG KÊ"],
+        ["🔎 TÌM NGÀY", todayDisplay],
+        ["Kết quả", "", "", "", "", "", "", "", "", ""],
+        ["", "", "", "", "", "", "", "", "", ""],
+        headers
+      ];
+
+      reports.forEach(r => aoa.push([
+        formatReportDate(r.date),
+        `${r.performance}%`,
+        r.capacity,
+        r.entered,
+        r.retired,
+        r.male || 0,
+        r.female || 0,
+        r.diff > 0 ? `+${r.diff}` : String(r.diff),
+        r.total,
+        r.dirtyRooms || 0,
+        r.modifiedRooms || 0,
+        r.updatedAt ? new Date(r.updatedAt).toLocaleString("vi-VN") : ""
+      ]));
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws["!cols"] = [
+        {wch:14},{wch:13},{wch:12},{wch:10},{wch:10},{wch:9},{wch:9},{wch:13},{wch:18},{wch:13},{wch:18},{wch:22}
+      ];
+
+      const firstDataRow = 6;
+      const lastDataRow = Math.max(firstDataRow, reports.length + 5);
+      ws["A1"] = {t:"s", v:"BÁO CÁO THỐNG KÊ"};
+      ws["A2"] = {t:"s", v:"🔎 TÌM NGÀY"};
+      ws["B2"] = {t:"s", v:todayDisplay};
+      ws["C2"] = {t:"s", v:"Ngày: DD/MM/YYYY"};
+
+      // Kết quả tra cứu theo đúng ngày DD/MM/YYYY.
+      ws["A3"] = {t:"s", v:"Kết quả"};
+      ws["B3"] = {f:`IFERROR(MATCH(B2,$A$${firstDataRow}:$A$${lastDataRow},0),"")`};
+      ws["C3"] = {t:"s", v:"Hiệu suất"};
+      ws["D3"] = {f:`IFERROR(INDEX($B$${firstDataRow}:$B$${lastDataRow},B3),"")`};
+      ws["E3"] = {t:"s", v:"Sức chứa"};
+      ws["F3"] = {f:`IFERROR(INDEX($C$${firstDataRow}:$C$${lastDataRow},B3),"")`};
+      ws["G3"] = {t:"s", v:"Vào"};
+      ws["H3"] = {f:`IFERROR(INDEX($D$${firstDataRow}:$D$${lastDataRow},B3),"")`};
+      ws["I3"] = {t:"s", v:"Nghỉ"};
+      ws["J3"] = {f:`IFERROR(INDEX($E$${firstDataRow}:$E$${lastDataRow},B3),"")`};
+
+      // Đánh dấu ngày hiện tại khi mở file; sau khi người dùng đổi B2, Excel sẽ tự đổi hàng vàng bằng conditional formatting.
+      const yellowStyle = {fill:{patternType:"solid", fgColor:{rgb:"FFFFFF00"}}, font:{bold:true}};
+      reports.forEach((r, i) => {
+        if (r.date === getLocalDateISO()) {
+          const row = firstDataRow + i;
+          for (let c=0;c<headers.length;c++) {
+            const cell = ws[XLSX.utils.encode_cell({r:row-1,c})];
+            if (cell) cell.s = yellowStyle;
+          }
+        }
+      });
+
+      ws["!autofilter"] = {ref:`A${firstDataRow}:L${lastDataRow}`};
+      ws["!freeze"] = {xSplit:0,ySplit:5};
+      // Lưu thông tin để hàm xuất Excel gắn conditional formatting vào XML.
+      ws.__dailyReportLastRow = lastDataRow;
+      XLSX.utils.book_append_sheet(wb, ws, "BaoCaoNgay");
+    }
+
+    async function downloadWorkbookWithDynamicReportHighlight(wb, filename) {
+      // SheetJS CE không ghi conditional formatting/style theo cách Excel cần; JSZip chèn trực tiếp
+      // rule vào file XLSX để hàng có ngày trùng B2 tự tô vàng khi người dùng tìm ngày khác.
+      if (typeof JSZip === "undefined") {
+        XLSX.writeFile(wb, filename);
+        return;
+      }
+
+      const reportWs = wb.Sheets["BaoCaoNgay"];
+      const lastRow = reportWs && reportWs.__dailyReportLastRow ? reportWs.__dailyReportLastRow : 6;
+      delete reportWs.__dailyReportLastRow;
+
+      const data = XLSX.write(wb, {bookType:"xlsx", type:"array", compression:true});
+      const zip = await JSZip.loadAsync(data);
+      const workbookXml = await zip.file("xl/workbook.xml").async("string");
+      const relsXml = await zip.file("xl/_rels/workbook.xml.rels").async("string");
+
+      const sheetMatch = workbookXml.match(/<sheet\b[^>]*name="BaoCaoNgay"[^>]*r:id="([^"]+)"[^>]*\/>/);
+      if (!sheetMatch) {
+        XLSX.writeFile(wb, filename);
+        return;
+      }
+      const rid = sheetMatch[1];
+      const relMatch = relsXml.match(new RegExp(`<Relationship\b[^>]*Id="${rid}"[^>]*Target="([^"]+)"[^>]*/>`));
+      if (!relMatch) {
+        XLSX.writeFile(wb, filename);
+        return;
+      }
+      let sheetPath = relMatch[1].replace(/^\//, "");
+      if (!sheetPath.startsWith("xl/")) sheetPath = "xl/" + sheetPath;
+
+      const stylesFile = zip.file("xl/styles.xml");
+      const sheetFile = zip.file(sheetPath);
+      if (!stylesFile || !sheetFile) {
+        XLSX.writeFile(wb, filename);
+        return;
+      }
+
+      let stylesXml = await stylesFile.async("string");
+      let sheetXml = await sheetFile.async("string");
+
+      let dxfId = 0;
+      const dxfsMatch = stylesXml.match(/<dxfs\b[^>]*count="(\d+)"[^>]*>/);
+      const dxf = `<dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/><bgColor indexed="64"/></patternFill></fill><font><b/></font></dxf>`;
+      if (dxfsMatch) {
+        dxfId = Number(dxfsMatch[1]);
+        stylesXml = stylesXml.replace(/<dxfs\b([^>]*)count="(\d+)"([^>]*)>/, (m,a,c,b) => `<dxfs${a}count="${Number(c)+1}"${b}>`);
+        stylesXml = stylesXml.replace(/<\/dxfs>/, dxf + "</dxfs>");
+      } else {
+        const pos = stylesXml.indexOf("</styleSheet>");
+        stylesXml = stylesXml.slice(0,pos) + `<dxfs count="1">${dxf}</dxfs>` + stylesXml.slice(pos);
+      }
+
+      const cf = `<conditionalFormatting sqref="A6:L${lastRow}"><cfRule type="expression" dxfId="${dxfId}" priority="1"><formula>$A6=$B$2</formula></cfRule></conditionalFormatting>`;
+      if (!sheetXml.includes("<conditionalFormatting")) {
+        const insertBefore = sheetXml.indexOf("<pageMargins");
+        if (insertBefore >= 0) sheetXml = sheetXml.slice(0, insertBefore) + cf + sheetXml.slice(insertBefore);
+        else sheetXml = sheetXml.replace("</worksheet>", cf + "</worksheet>");
+      }
+
+      zip.file("xl/styles.xml", stylesXml);
+      zip.file(sheetPath, sheetXml);
+      const out = await zip.generateAsync({type:"blob", compression:"DEFLATE"});
+      const url = URL.createObjectURL(out);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
     // ==================== BẢNG ĐIỀU KHIỂN & ĐẾM QUÂN SỐ ====================
     function updateDashboardStats() {
       const rooms = Object.values(db);
@@ -1722,6 +2018,9 @@
       if (roomStatusEl) roomStatusEl.innerHTML = `${availableRooms}/<span style="color:var(--red);font-weight:bold;">${fullRooms}</span>`;
 
       setText('statMod', modifiedRooms);
+
+      // Cập nhật kho báo cáo ngày ngay sau khi dashboard được tính lại.
+      refreshDailyReportHistory();
     }
 
     // ==================== 8. LAZY LOAD CHI TIẾT PHÒNG ====================
@@ -2440,77 +2739,326 @@
     async function startDirectCamera() {
       const video = document.getElementById('camVideo'), msg = document.getElementById('camStatusMsg');
       if (!video || !msg) return;
-      closeCameraStream();
-      msg.innerText = "Đang kích hoạt camera...";
 
-      const constraints = {
-        audio: false,
-        video: {
-          facingMode: { ideal: currentCameraFacing },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          focusMode: { ideal: "continuous" }
-        }
+      closeCameraStream();
+      cccdScanStartedAt = Date.now();
+      cccdLastOcrAt = 0;
+      cccdOcrRunning = false;
+      cccdLastFingerprint = "";
+      msg.innerText = "Đang tối ưu camera... Ưu tiên QR, tự động chuyển OCR nếu QR không đọc được.";
+
+      const baseVideo = {
+        facingMode: { ideal: currentCameraFacing },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
       };
 
       try {
-        localStream = await navigator.mediaDevices.getUserMedia(constraints);
-        video.srcObject = localStream;
-        await video.play();
-        isScanning = true;
-        msg.innerText = "Đặt mã QR vào ô vuông xanh (tự động nhận)";
-        scanVideoFrame();
+        localStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            ...baseVideo,
+            advanced: [{ focusMode: "continuous" }]
+          }
+        });
       } catch (err) {
         try {
           localStream = await navigator.mediaDevices.getUserMedia({
             audio: false,
-            video: { facingMode: { ideal: currentCameraFacing } }
+            video: baseVideo
           });
-          video.srcObject = localStream;
-          await video.play();
-          isScanning = true;
-          msg.innerText = "Hướng ô vuông xanh vào mã QR";
-          scanVideoFrame();
         } catch (e) {
           msg.innerText = "Không mở được camera. Dùng 'Tải Ảnh CCCD'.";
+          return;
         }
+      }
+
+      video.srcObject = localStream;
+      try { await video.play(); } catch(e) {}
+
+      // Cố gắng bật lấy nét liên tục trên các máy có hỗ trợ.
+      try {
+        const track = localStream.getVideoTracks()[0];
+        const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+        const advanced = {};
+        if (Array.isArray(caps.focusMode) && caps.focusMode.includes("continuous")) {
+          advanced.focusMode = "continuous";
+        }
+        if (Object.keys(advanced).length) await track.applyConstraints({advanced: [advanced]});
+      } catch(e) {}
+
+      isScanning = true;
+      msg.innerText = "Đưa mặt trước hoặc mặt sau CCCD vào camera. QR sẽ được ưu tiên; nếu không có QR, OCR tự đọc Số CCCD + Họ tên + Ngày sinh.";
+      scanVideoFrame();
+    }
+
+    function getScannerImageData(video, mode = "qr") {
+      const canvas = document.getElementById('qrCanvas');
+      if (!canvas || !video || !video.videoWidth || !video.videoHeight) return null;
+
+      const vW = video.videoWidth, vH = video.videoHeight;
+      let sx = 0, sy = 0, sw = vW, sh = vH;
+
+      if (mode === "qr") {
+        // QR có thể nằm lệch vùng giữa; quét vùng trung tâm trước để giảm tải CPU.
+        const side = Math.round(Math.min(vW, vH) * 0.78);
+        sx = Math.round((vW - side) / 2);
+        sy = Math.round((vH - side) / 2);
+        sw = sh = side;
+      } else {
+        // OCR cần cả thẻ CCCD; bỏ viền ngoài một chút nhưng giữ nguyên tỷ lệ ngang.
+        sx = Math.round(vW * 0.05);
+        sy = Math.round(vH * 0.08);
+        sw = Math.round(vW * 0.90);
+        sh = Math.round(vH * 0.84);
+      }
+
+      const maxDim = mode === "qr" ? 900 : 1600;
+      const scale = Math.min(1, maxDim / Math.max(sw, sh));
+      const dw = Math.max(320, Math.round(sw * scale));
+      const dh = Math.max(240, Math.round(sh * scale));
+
+      canvas.width = dw;
+      canvas.height = dh;
+      const ctx = canvas.getContext('2d', {willReadFrequently:true});
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, dw, dh);
+      return {canvas, ctx, width:dw, height:dh};
+    }
+
+    async function detectQrFast(video) {
+      // BarcodeDetector nhanh hơn jsQR đáng kể trên trình duyệt hỗ trợ.
+      try {
+        if ("BarcodeDetector" in window) {
+          if (!detectQrFast.detectorPromise) {
+            detectQrFast.detectorPromise = (async () => {
+              try {
+                const supported = await BarcodeDetector.getSupportedFormats();
+                if (supported.includes("qr_code")) return new BarcodeDetector({formats:["qr_code"]});
+              } catch(e) {}
+              return null;
+            })();
+          }
+          const detector = await detectQrFast.detectorPromise;
+          if (detector) {
+            const codes = await detector.detect(video);
+            const hit = codes && codes.find(x => x.rawValue);
+            if (hit && hit.rawValue) return hit.rawValue;
+          }
+        }
+      } catch(e) {}
+
+      const frame = getScannerImageData(video, "qr");
+      if (!frame || typeof jsQR !== "function") return "";
+      try {
+        const imageData = frame.ctx.getImageData(0, 0, frame.width, frame.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: "attemptBoth"
+        });
+        return code && code.data ? code.data : "";
+      } catch(e) {
+        return "";
       }
     }
 
-    function scanVideoFrame() {
-      if (!isScanning) return;
-      const video = document.getElementById('camVideo'), canvas = document.getElementById('qrCanvas');
-      if (!video || !canvas || scanTimer) return;
+    function loadCccdOcrEngine() {
+      if (cccdOcrReady && window.Tesseract) return Promise.resolve();
+      if (cccdOcrLoadPromise) return cccdOcrLoadPromise;
 
-      scanTimer = setTimeout(() => {
-        scanTimer = null;
-        if (!isScanning) return;
-        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0) {
-          const vW = video.videoWidth, vH = video.videoHeight;
-          const boxSize = Math.round(Math.min(vW, vH) * 0.65);
-          const startX = Math.round((vW - boxSize) / 2);
-          const startY = Math.round((vH - boxSize) / 2);
-
-          canvas.width = boxSize;
-          canvas.height = boxSize;
-          const ctx = canvas.getContext('2d', { willReadFrequently: true });
-          ctx.drawImage(video, startX, startY, boxSize, boxSize, 0, 0, boxSize, boxSize);
-
-          try {
-            const imageData = ctx.getImageData(0, 0, boxSize, boxSize);
-            const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
-            if (code?.data) {
-              isScanning = false;
-              if (navigator.vibrate) navigator.vibrate(80);
-              parseCccdData(code.data);
-              const status = document.getElementById('camStatusMsg');
-              if (status) status.innerText = "Đã nhận dạng mã QR thành công!";
-              return;
-            }
-          } catch (e) {}
+      cccdOcrLoadPromise = new Promise((resolve, reject) => {
+        if (window.Tesseract) {
+          cccdOcrReady = true;
+          resolve();
+          return;
         }
-        scanVideoFrame();
-      }, 100);
+        const script = document.createElement("script");
+        script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+        script.async = true;
+        script.onload = () => {
+          cccdOcrReady = !!window.Tesseract;
+          cccdOcrReady ? resolve() : reject(new Error("Tesseract không sẵn sàng"));
+        };
+        script.onerror = () => reject(new Error("Không tải được OCR"));
+        document.head.appendChild(script);
+      }).catch(err => {
+        cccdOcrLoadPromise = null;
+        throw err;
+      });
+
+      return cccdOcrLoadPromise;
+    }
+
+    function preprocessCccdImage(frame) {
+      const src = frame.ctx.getImageData(0, 0, frame.width, frame.height);
+      const data = src.data;
+
+      // Tăng tương phản + chuyển xám để OCR ổn định hơn khi ánh sáng yếu.
+      let min = 255, max = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const g = Math.round(0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
+        if (g < min) min = g;
+        if (g > max) max = g;
+      }
+      const range = Math.max(1, max - min);
+      for (let i = 0; i < data.length; i += 4) {
+        const g0 = Math.round(0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
+        const g = Math.max(0, Math.min(255, Math.round((g0 - min) * 255 / range)));
+        data[i] = data[i+1] = data[i+2] = g;
+      }
+
+      frame.ctx.putImageData(src, 0, 0);
+      return frame.canvas;
+    }
+
+    function parseCccdOcrText(text) {
+      const raw = String(text || "")
+        .replace(/[|]/g, " ")
+        .replace(/[“”‘’]/g, "")
+        .replace(/\r/g, "\n");
+
+      const compact = raw.replace(/\s+/g, " ").trim();
+
+      // CCCD Việt Nam: ưu tiên đúng chuỗi 12 số.
+      const idCandidates = compact
+        .replace(/[OoQq]/g, "0")
+        .replace(/[Il|]/g, "1")
+        .match(/(?:\d[\s.-]?){12,13}/g) || [];
+
+      let idCard = "";
+      for (const c of idCandidates) {
+        const n = c.replace(/\D/g, "");
+        if (n.length === 12) { idCard = n; break; }
+      }
+
+      // Ngày sinh: ưu tiên dd/mm/yyyy; OCR đôi khi đọc dấu thành . hoặc -.
+      const dateCandidates = compact.match(/\b(?:0?[1-9]|[12]\d|3[01])[\s./-](?:0?[1-9]|1[0-2])[\s./-](?:19|20)\d{2}\b/g) || [];
+      let dob = "";
+      if (dateCandidates.length) {
+        dob = normalizeDateString(dateCandidates[0].replace(/\s+/g, ""));
+      }
+
+      // Tìm dòng có từ khóa HỌ TÊN trước, nếu không có thì chọn dòng chữ hoa có độ dài hợp lý.
+      const lines = raw.split(/\n+/).map(x => x.replace(/\s+/g, " ").trim()).filter(Boolean);
+      let name = "";
+      const cleanName = v => v
+        .replace(/^(HỌ\s*VÀ\s*TÊN|HO\s*VA\s*TEN|FULL\s*NAME)\s*[:.-]?\s*/i, "")
+        .replace(/[^A-Za-zÀ-ỹĐđ\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      for (const line of lines) {
+        if (/(HỌ\s*VÀ\s*TÊN|HO\s*VA\s*TEN|FULL\s*NAME)/i.test(line)) {
+          const n = cleanName(line);
+          if (n.length >= 4) { name = n; break; }
+        }
+      }
+      if (!name) {
+        const candidates = lines
+          .map(cleanName)
+          .filter(x => x.length >= 6 && x.length <= 60)
+          .filter(x => !/\d/.test(x))
+          .filter(x => !/(CỘNG HÒA|CONG HOA|VIỆT NAM|VIET NAM|CĂN CƯỚC|CAN CUOC|IDENTITY|DATE|NGÀY|NGAY|QUÊ|QUE)/i.test(x));
+        if (candidates.length) name = candidates.sort((a,b) => b.length - a.length)[0];
+      }
+
+      return {idCard, name, dob};
+    }
+
+    async function runCccdOcr(video) {
+      if (cccdOcrRunning || !isScanning) return;
+      const now = Date.now();
+      if (now - cccdLastOcrAt < 2200) return;
+      cccdLastOcrAt = now;
+      cccdOcrRunning = true;
+
+      const msg = document.getElementById('camStatusMsg');
+      if (msg) msg.innerText = "QR chưa nhận được — đang đọc Số CCCD, Họ tên và Ngày sinh...";
+
+      try {
+        await loadCccdOcrEngine();
+        if (!isScanning) return;
+
+        const frame = getScannerImageData(video, "ocr");
+        if (!frame) return;
+        preprocessCccdImage(frame);
+
+        const result = await window.Tesseract.recognize(frame.canvas, "vie+eng", {
+          logger: m => {
+            if (m.status === "recognizing text" && msg) {
+              msg.innerText = `OCR CCCD ${Math.round((m.progress || 0) * 100)}% — chỉ lấy Số CCCD / Họ tên / Ngày sinh`;
+            }
+          },
+          tessedit_pageseg_mode: 6,
+          tessedit_char_whitelist: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/.- "
+        });
+
+        const parsed = parseCccdOcrText(result?.data?.text || "");
+        if (!parsed.idCard && !parsed.name && !parsed.dob) {
+          if (msg) msg.innerText = "Chưa đọc rõ. Giữ thẻ thẳng, đủ sáng và cách camera khoảng 15–25 cm.";
+          return;
+        }
+
+        if (parsed.idCard) document.getElementById('gIdCard').value = parsed.idCard;
+        if (parsed.name) document.getElementById('gName').value = parsed.name;
+        if (parsed.dob) document.getElementById('gDob').value = parsed.dob;
+
+        const fingerprint = [parsed.idCard, parsed.name, parsed.dob].join("|");
+        if (fingerprint && fingerprint === cccdLastFingerprint) {
+          // Hai lần OCR giống nhau -> coi là kết quả ổn định.
+          if (parsed.idCard && parsed.name && parsed.dob) {
+            isScanning = false;
+            if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+            if (msg) msg.innerText = "✓ Đã nhận diện bằng OCR: Số CCCD + Họ tên + Ngày sinh.";
+            return;
+          }
+        }
+        cccdLastFingerprint = fingerprint;
+
+        if (parsed.idCard && parsed.name && parsed.dob) {
+          isScanning = false;
+          if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+          if (msg) msg.innerText = "✓ Đã nhận diện bằng OCR: Số CCCD + Họ tên + Ngày sinh.";
+        } else if (msg) {
+          msg.innerText = "Đã đọc được một phần. Giữ thẻ ổn định để bổ sung dữ liệu còn thiếu.";
+        }
+      } catch (err) {
+        console.warn("OCR CCCD:", err);
+        if (msg) msg.innerText = "OCR chưa sẵn sàng. Có thể dùng 'Tải Ảnh CCCD' hoặc nhập nhanh.";
+      } finally {
+        cccdOcrRunning = false;
+      }
+    }
+
+    async function scanVideoFrame() {
+      if (!isScanning) return;
+      const video = document.getElementById('camVideo');
+      if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
+        scanTimer = setTimeout(scanVideoFrame, 80);
+        return;
+      }
+
+      try {
+        // QR: chạy liên tục ở mức nhẹ; không chặn UI bằng OCR.
+        const qr = await detectQrFast(video);
+        if (qr) {
+          isScanning = false;
+          if (navigator.vibrate) navigator.vibrate(80);
+          parseCccdData(qr);
+          const status = document.getElementById('camStatusMsg');
+          if (status) status.innerText = "✓ Đã nhận dạng mã QR CCCD.";
+          return;
+        }
+
+        // Sau ~1.2 giây không có QR, kích hoạt OCR. OCR chạy thưa để tránh nóng máy.
+        if (Date.now() - cccdScanStartedAt > 1200) {
+          runCccdOcr(video);
+        }
+      } catch(e) {
+        // Không dừng scanner vì lỗi một frame.
+      }
+
+      if (isScanning) {
+        scanTimer = setTimeout(scanVideoFrame, 90);
+      }
     }
 
     function toggleCameraFacing() {
@@ -2872,7 +3420,9 @@
       XLSX.writeFile(wb, 'Mau_Excel_Nhap_Cong_Nhan_LangVan.xlsx');
     }
 
-    function exportDataExcel() {
+    async function exportDataExcel() {
+      refreshDailyReportHistory(true);
+
       const rows = [];
       Object.values(db).forEach(r => {
         (r.workers || []).forEach(w => rows.push({
@@ -2889,12 +3439,14 @@
           'Dãy Phòng': `${r.id} - Dãy ${r.row}`
         }));
       });
+
       const headers = ['Mã NV','Họ và Tên','CCCD','Giới Tính','Ngày Sinh','SĐT','Địa Chỉ','Ghi Chú','Ngày Vào','Ngày Nghỉ Việc','Dãy Phòng'];
       const ws = XLSX.utils.json_to_sheet(rows, {header: headers});
       ws['!cols'] = headers.map(h => ({wch: Math.max(12, h.length + 3)}));
+
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'CongNhan');
-      
+
       if (typeof retiredList !== 'undefined' && Array.isArray(retiredList) && retiredList.length > 0) {
         const retiredRows = retiredList.map((w, idx) => ({
           'STT': idx + 1,
@@ -2910,7 +3462,9 @@
         const retiredWs = XLSX.utils.json_to_sheet(retiredRows);
         XLSX.utils.book_append_sheet(wb, retiredWs, 'DanhSachNghiViec');
       }
-      XLSX.writeFile(wb, `LangVan_DanhSach_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+      addDailyReportSheet(wb);
+      await downloadWorkbookWithDynamicReportHighlight(wb, `LangVan_DanhSach_${getLocalDateISO()}.xlsx`);
     }
 
     function exportAuditLogsExcel() {
