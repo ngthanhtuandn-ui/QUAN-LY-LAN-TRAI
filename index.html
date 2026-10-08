@@ -143,8 +143,10 @@
     #camVideo { width: 100%; height: 100%; object-fit: cover; }
     
     .scan-guide-box { 
-      position: absolute; width: 170px; height: 170px; 
-      border: 3px solid #22c55e; border-radius: 12px; 
+      position: absolute; width: 84%; height: 52%; 
+      max-width: 620px; max-height: 260px; min-height: 145px;
+      aspect-ratio: 1.586 / 1;
+      border: 3px solid #22c55e; border-radius: 10px; 
       box-shadow: 0 0 0 9999px rgba(0,0,0,0.5); pointer-events: none; 
       display: flex; justify-content: center; align-items: flex-end; 
     }
@@ -208,7 +210,7 @@
       .mobile-quickbar .admin { background: #475569; }
       
       .camera-wrapper { height: 240px; }
-      .scan-guide-box { width: 160px; height: 160px; }
+      .scan-guide-box { width: 90%; height: auto; aspect-ratio: 1.586 / 1; max-height: 190px; min-height: 0; }
     }
 
     @media print {
@@ -522,7 +524,7 @@
       <canvas id="qrCanvas" style="display:none;"></canvas>
       <div id="camStatusMsg" style="font-size:0.75rem; color:var(--primary); font-weight:bold; margin: 6px 0; text-align:center;">Đang khởi tạo camera...</div>
       <div style="font-size:.68rem;color:#64748b;text-align:center;margin:-2px 0 7px;">
-        ⚡ Ưu tiên QR tốc độ cao → nếu không đọc được sẽ tự chuyển OCR và chỉ lấy <b>CCCD + Họ tên + Ngày sinh</b>.
+        📐 Đưa toàn bộ mặt CCCD vào khung chữ nhật → bấm <b>CHỤP & ĐỌC CCCD</b>. Chỉ lấy <b>Số định danh 12 số + Họ tên + Ngày sinh + Giới tính</b>.
       </div>
 
       <div style="display:flex; justify-content:center; gap:8px; margin:8px 0; flex-wrap:wrap;">
@@ -530,7 +532,7 @@
         <button onclick="toggleTorch()" id="btnTorch" class="btn" style="background:#d97706; color:white; padding: 8px 12px; font-weight:bold;">💡 Đèn</button>
         <button onclick="toggleCameraFacing()" class="btn" style="background:#4f46e5; color:white; padding: 8px 12px; font-weight:bold;">🔄 Đổi Cam</button>
         <input type="file" id="fileCccdQuick" accept="image/*" capture="environment" onchange="handleFileCCCDQuick(this)" style="display:none;">
-        <button onclick="document.getElementById('fileCccdQuick').click()" class="btn" style="background:#475569; color:white; padding: 8px 12px; font-weight:bold;">🖼 Tải Ảnh CCCD</button>
+        <button onclick="document.getElementById('fileCccdQuick').click()" class="btn" style="background:#475569; color:white; padding: 8px 12px; font-weight:bold;">🖼 Tải ảnh từ file</button>
       </div>
 
       <div style="background:#f8fafc; padding:8px; border-radius:4px; border:1px solid var(--border); margin-bottom: 20px;">
@@ -539,11 +541,11 @@
           <div class="col"><label>Mã NV</label><input type="text" id="gEmpId"></div>
         </div>
         <div class="form-row">
-          <div class="col"><label>Họ và Tên *</label><input type="text" id="gName"></div>
+          <div class="col"><label>Họ và Tên *</label><input type="text" id="gName" style="text-transform:uppercase;"></div>
           <div class="col" style="max-width:80px;"><label>Giới Tính</label><select id="gGender"><option value="Nam">Nam</option><option value="Nữ">Nữ</option></select></div>
         </div>
         <div class="form-row">
-          <div class="col"><label>Số CCCD *</label><input type="text" id="gIdCard"></div>
+          <div class="col"><label>Số CCCD *</label><input type="text" id="gIdCard" style="font-weight:800;"></div>
           <div class="col"><label>Ngày Sinh</label><input type="text" id="gDob" placeholder="dd/mm/yyyy" oninput="applyDateMask(this)"></div>
         </div>
         <div class="form-row">
@@ -2842,23 +2844,35 @@
       let sx = 0, sy = 0, sw = vW, sh = vH;
 
       if (mode === "qr") {
-        // QR có thể nằm lệch vùng giữa; quét vùng trung tâm trước để giảm tải CPU.
-        const side = Math.round(Math.min(vW, vH) * 0.78);
+        const side = Math.round(Math.min(vW, vH) * 0.88);
         sx = Math.round((vW - side) / 2);
         sy = Math.round((vH - side) / 2);
         sw = sh = side;
+      } else if (mode === "card") {
+        // CCCD dạng thẻ ngang, tỷ lệ gần 1.586:1. Cắt đúng vùng thẻ để OCR có chữ lớn hơn.
+        const cardRatio = 1.586;
+        const maxW = Math.round(vW * 0.92);
+        const maxH = Math.round(vH * 0.78);
+        sw = maxW;
+        sh = Math.round(sw / cardRatio);
+        if (sh > maxH) {
+          sh = maxH;
+          sw = Math.round(sh * cardRatio);
+        }
+        sx = Math.round((vW - sw) / 2);
+        sy = Math.round((vH - sh) / 2);
       } else {
-        // OCR cần cả thẻ CCCD; bỏ viền ngoài một chút nhưng giữ nguyên tỷ lệ ngang.
-        sx = Math.round(vW * 0.05);
+        // OCR tự động vẫn giữ toàn bộ vùng trung tâm của khung camera.
+        sx = Math.round(vW * 0.04);
         sy = Math.round(vH * 0.08);
-        sw = Math.round(vW * 0.90);
+        sw = Math.round(vW * 0.92);
         sh = Math.round(vH * 0.84);
       }
 
-      const maxDim = mode === "qr" ? 900 : 1600;
+      const maxDim = mode === "qr" ? 1000 : (mode === "card" ? 1800 : 1600);
       const scale = Math.min(1, maxDim / Math.max(sw, sh));
-      const dw = Math.max(320, Math.round(sw * scale));
-      const dh = Math.max(240, Math.round(sh * scale));
+      const dw = Math.max(480, Math.round(sw * scale));
+      const dh = Math.max(300, Math.round(sh * scale));
 
       canvas.width = dw;
       canvas.height = dh;
@@ -2956,37 +2970,29 @@
         .replace(/[|]/g, " ")
         .replace(/[“”‘’]/g, "")
         .replace(/\r/g, "\n");
-
       const compact = raw.replace(/\s+/g, " ").trim();
 
-      // CCCD Việt Nam: ưu tiên đúng chuỗi 12 số.
       const idCandidates = compact
         .replace(/[OoQq]/g, "0")
         .replace(/[Il|]/g, "1")
         .match(/(?:\d[\s.-]?){12,13}/g) || [];
-
       let idCard = "";
       for (const c of idCandidates) {
         const n = c.replace(/\D/g, "");
         if (n.length === 12) { idCard = n; break; }
       }
 
-      // Ngày sinh: ưu tiên dd/mm/yyyy; OCR đôi khi đọc dấu thành . hoặc -.
       const dateCandidates = compact.match(/\b(?:0?[1-9]|[12]\d|3[01])[\s./-](?:0?[1-9]|1[0-2])[\s./-](?:19|20)\d{2}\b/g) || [];
-      let dob = "";
-      if (dateCandidates.length) {
-        dob = normalizeDateString(dateCandidates[0].replace(/\s+/g, ""));
-      }
+      let dob = dateCandidates.length ? normalizeDateString(dateCandidates[0].replace(/\s+/g, "")) : "";
 
-      // Tìm dòng có từ khóa HỌ TÊN trước, nếu không có thì chọn dòng chữ hoa có độ dài hợp lý.
       const lines = raw.split(/\n+/).map(x => x.replace(/\s+/g, " ").trim()).filter(Boolean);
-      let name = "";
       const cleanName = v => v
         .replace(/^(HỌ\s*VÀ\s*TÊN|HO\s*VA\s*TEN|FULL\s*NAME)\s*[:.-]?\s*/i, "")
         .replace(/[^A-Za-zÀ-ỹĐđ\s]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
 
+      let name = "";
       for (const line of lines) {
         if (/(HỌ\s*VÀ\s*TÊN|HO\s*VA\s*TEN|FULL\s*NAME)/i.test(line)) {
           const n = cleanName(line);
@@ -2998,11 +3004,17 @@
           .map(cleanName)
           .filter(x => x.length >= 6 && x.length <= 60)
           .filter(x => !/\d/.test(x))
-          .filter(x => !/(CỘNG HÒA|CONG HOA|VIỆT NAM|VIET NAM|CĂN CƯỚC|CAN CUOC|IDENTITY|DATE|NGÀY|NGAY|QUÊ|QUE)/i.test(x));
+          .filter(x => !/(CỘNG HÒA|CONG HOA|VIỆT NAM|VIET NAM|CĂN CƯỚC|CAN CUOC|IDENTITY|DATE|NGÀY|NGAY|GIỚI|GIOI|QUÊ|QUE)/i.test(x));
         if (candidates.length) name = candidates.sort((a,b) => b.length - a.length)[0];
       }
+      name = name ? name.toLocaleUpperCase('vi-VN') : "";
 
-      return {idCard, name, dob};
+      let gender = "";
+      const genderText = compact.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+      if (/(^|\s)(NU|NƯ|FEMALE|F)(\s|$)/.test(genderText)) gender = "Nữ";
+      else if (/(^|\s)(NAM|MALE|M)(\s|$)/.test(genderText)) gender = "Nam";
+
+      return {idCard, name, dob, gender};
     }
 
     async function runCccdOcr(video) {
@@ -3019,7 +3031,7 @@
         await loadCccdOcrEngine();
         if (!isScanning) return;
 
-        const frame = getScannerImageData(video, "ocr");
+        const frame = getScannerImageData(video, "card");
         if (!frame) return;
         preprocessCccdImage(frame);
 
@@ -3040,8 +3052,9 @@
         }
 
         if (parsed.idCard) document.getElementById('gIdCard').value = parsed.idCard;
-        if (parsed.name) document.getElementById('gName').value = parsed.name;
+        if (parsed.name) document.getElementById('gName').value = parsed.name.toLocaleUpperCase('vi-VN');
         if (parsed.dob) document.getElementById('gDob').value = parsed.dob;
+        if (parsed.gender) document.getElementById('gGender').value = parsed.gender;
 
         const fingerprint = [parsed.idCard, parsed.name, parsed.dob].join("|");
         if (fingerprint && fingerprint === cccdLastFingerprint) {
@@ -3107,91 +3120,87 @@
     async function captureCccdDirect() {
       const video = document.getElementById('camVideo');
       const msg = document.getElementById('camStatusMsg');
-      if (!video || !video.videoWidth) {
-        if (msg) msg.innerText = "Camera chưa sẵn sàng.";
+      const btn = document.querySelector('button[onclick="captureCccdDirect()"]');
+      if (!video || !video.videoWidth || video.readyState < 2) {
+        if (msg) msg.innerText = "Camera chưa sẵn sàng. Vui lòng chờ hình ảnh hiện rõ rồi bấm lại.";
         return;
       }
 
-      // Chụp một khung hình độ phân giải cao rồi thử QR trước, OCR sau.
-      const frame = getScannerImageData(video, "ocr");
-      if (!frame) return;
+      const frame = getScannerImageData(video, "card");
+      if (!frame) {
+        if (msg) msg.innerText = "Không lấy được khung hình. Vui lòng thử lại.";
+        return;
+      }
+
+      // Chụp một frame độc lập, tạm dừng vòng quét nền để không tranh tài nguyên với OCR.
+      isScanning = false;
+      if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
+
+      if (btn) { btn.disabled = true; btn.style.opacity = '.65'; }
       if (navigator.vibrate) navigator.vibrate(50);
-      if (msg) msg.innerText = "📸 Đã chụp — đang đọc QR và tăng tương phản để nhận diện CCCD...";
+      if (msg) msg.innerText = "📸 Đã chụp toàn bộ CCCD — đang nhận diện 4 thông tin...";
 
       try {
+        // 1. Thử QR trước vì dữ liệu QR có độ chính xác cao hơn OCR.
         const imageData = frame.ctx.getImageData(0, 0, frame.width, frame.height);
         const qr = typeof jsQR === "function"
           ? jsQR(imageData.data, imageData.width, imageData.height, {inversionAttempts:"attemptBoth"})
           : null;
-
         if (qr && qr.data) {
-          isScanning = false;
           parseCccdData(qr.data);
-          if (msg) msg.innerText = "✓ Chụp và đọc QR CCCD thành công.";
+          isScanning = false;
+          if (msg) msg.innerText = "✓ Đã đọc CCCD từ QR: Số định danh + Họ tên + Ngày sinh + Giới tính.";
           return;
         }
 
+        // 2. OCR nhiều biến thể, ưu tiên vùng thẻ hình chữ nhật.
         await loadCccdOcrEngine();
         const variants = [];
-
-        // Biến thể 1: ảnh tăng tương phản.
-        const c1 = document.createElement("canvas");
-        c1.width = frame.width; c1.height = frame.height;
-        const x1 = c1.getContext("2d", {willReadFrequently:true});
-        x1.drawImage(frame.canvas, 0, 0);
-        const d1 = x1.getImageData(0,0,c1.width,c1.height);
-        let min = 255, max = 0;
-        for (let i=0;i<d1.data.length;i+=4) {
-          const g = Math.round(.299*d1.data[i]+.587*d1.data[i+1]+.114*d1.data[i+2]);
-          if (g<min) min=g; if (g>max) max=g;
-        }
-        const range = Math.max(1,max-min);
-        for (let i=0;i<d1.data.length;i+=4) {
-          const g0 = Math.round(.299*d1.data[i]+.587*d1.data[i+1]+.114*d1.data[i+2]);
-          const g = Math.max(0,Math.min(255,Math.round((g0-min)*255/range)));
-          d1.data[i]=d1.data[i+1]=d1.data[i+2]=g;
-        }
-        x1.putImageData(d1,0,0);
-        variants.push(c1);
-
-        // Biến thể 2: ảnh xám nhẹ, giữ chi tiết chữ khi ánh sáng không đều.
-        const c2 = document.createElement("canvas");
-        c2.width = frame.width; c2.height = frame.height;
-        const x2 = c2.getContext("2d", {willReadFrequently:true});
-        x2.filter = "contrast(1.35) brightness(1.12) grayscale(1)";
-        x2.drawImage(frame.canvas,0,0);
-        variants.push(c2);
+        const makeVariant = (filter) => {
+          const c = document.createElement('canvas');
+          c.width = frame.width; c.height = frame.height;
+          const x = c.getContext('2d', {willReadFrequently:true});
+          x.filter = filter;
+          x.drawImage(frame.canvas, 0, 0);
+          return c;
+        };
+        variants.push(makeVariant('none'));
+        variants.push(makeVariant('contrast(1.45) brightness(1.08) grayscale(1)'));
+        variants.push(makeVariant('contrast(1.7) brightness(1.15) grayscale(1)'));
 
         let best = null;
-        for (const canvas of variants) {
-          if (msg) msg.innerText = "🔎 Đang đọc mặt CCCD bằng OCR...";
-          const result = await window.Tesseract.recognize(canvas, "vie+eng", {
+        for (let i = 0; i < variants.length; i++) {
+          if (msg) msg.innerText = `🔎 Đang đọc CCCD bằng OCR (${i+1}/${variants.length})...`;
+          const result = await window.Tesseract.recognize(variants[i], "vie+eng", {
             tessedit_pageseg_mode: 6,
-            tessedit_char_whitelist: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/.- "
+            tessedit_char_whitelist: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ/.- "
           });
           const parsed = parseCccdOcrText(result?.data?.text || "");
-          const score = (parsed.idCard ? 3 : 0) + (parsed.name ? 2 : 0) + (parsed.dob ? 2 : 0);
+          const score = (parsed.idCard ? 4 : 0) + (parsed.name ? 3 : 0) + (parsed.dob ? 2 : 0) + (parsed.gender ? 1 : 0);
           if (!best || score > best.score) best = {parsed, score};
-          if (score >= 7) break;
+          if (score >= 10) break;
         }
 
         if (best && best.score > 0) {
           const p = best.parsed;
           if (p.idCard) document.getElementById('gIdCard').value = p.idCard;
-          if (p.name) document.getElementById('gName').value = p.name;
+          if (p.name) document.getElementById('gName').value = p.name.toLocaleUpperCase('vi-VN');
           if (p.dob) document.getElementById('gDob').value = p.dob;
+          if (p.gender) document.getElementById('gGender').value = p.gender;
           isScanning = false;
           if (navigator.vibrate) navigator.vibrate([60,40,60]);
-          if (msg) msg.innerText = best.score >= 7
-            ? "✓ Đã chụp và nhận diện CCCD: Số CCCD + Họ tên + Ngày sinh."
-            : "⚠ Đã đọc được một phần. Kiểm tra lại thông tin trước khi lưu.";
+          if (msg) msg.innerText = best.score >= 10
+            ? "✓ Đã nhận diện đủ 4 thông tin CCCD. Kiểm tra lại trước khi lưu."
+            : "⚠ Đã đọc được một phần. Giữ thẻ đúng khung và chụp lại nếu cần.";
           return;
         }
 
-        if (msg) msg.innerText = "⚠ Chưa đọc rõ. Hãy bật đèn, giữ thẻ thẳng và chụp lại.";
+        if (msg) msg.innerText = "⚠ Chưa đọc rõ CCCD. Đặt toàn bộ thẻ vào khung chữ nhật, tránh chói và bấm lại.";
       } catch (e) {
         console.warn("captureCccdDirect:", e);
-        if (msg) msg.innerText = "Không xử lý được ảnh chụp. Hãy chụp lại hoặc dùng Tải Ảnh CCCD.";
+        if (msg) msg.innerText = "Không xử lý được ảnh chụp. Hãy kiểm tra camera rồi bấm CHỤP & ĐỌC lại.";
+      } finally {
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
       }
     }
 
@@ -3248,24 +3257,24 @@
       const parts = raw.split('|').map(v => String(v ?? '').trim());
       if (parts.length < 5) return alert("Không nhận diện được định dạng CCCD: " + raw);
       const cardNo = normalizeIdCard(parts[0]);
-      if (![9, 12].includes(cardNo.length)) return alert("Số CCCD đọc được không hợp lệ: " + parts[0]);
+      if (cardNo.length !== 12) return alert("Số định danh cá nhân phải đủ 12 chữ số: " + parts[0]);
 
       const normalizeGenderVal = v => /^(nữ|nu|female|f)$/i.test(String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()) ? 'Nữ' : 'Nam';
       const looksLikeDate = v => /^\d{6,8}$/.test(String(v).replace(/\D/g, ''));
 
-      let name, dob, gender, address;
+      let name, dob, gender;
       if (parts.length >= 7 && !looksLikeDate(parts[1]) && !/^(nam|nu|nữ|male|female)$/i.test(parts[1])) {
-        name = parts[2]; dob = parts[3]; gender = parts[4]; address = parts[5];
+        name = parts[2]; dob = parts[3]; gender = parts[4];
       } else {
-        name = parts[1]; dob = parts[2]; gender = parts[3]; address = parts[4];
+        name = parts[1]; dob = parts[2]; gender = parts[3];
       }
 
       document.getElementById('gIdCard').value = cardNo;
-      document.getElementById('gName').value = name || '';
+      document.getElementById('gName').value = String(name || '').toLocaleUpperCase('vi-VN');
       document.getElementById('gDob').value = normalizeDateString(dob);
       document.getElementById('gGender').value = normalizeGenderVal(gender);
-      document.getElementById('gAddress').value = address || '';
-      alert(name ? "Đã nhận diện: " + name : "Đã nhận dạng thẻ.");
+      document.getElementById('gIdCard').style.fontWeight = '800';
+      document.getElementById('gName').style.textTransform = 'uppercase';
     }
 
     function handleFileCCCDQuick(input) {
@@ -3279,7 +3288,7 @@
         const img = new Image();
         img.onload = function() {
           const canvas = document.getElementById('qrCanvas');
-          const maxDim = 1200;
+          const maxDim = 1800;
           let w = img.width, h = img.height;
           if (w > maxDim || h > maxDim) {
             if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
@@ -3305,8 +3314,9 @@
               });
               const parsed = parseCccdOcrText(result?.data?.text || "");
               if (parsed.idCard) document.getElementById('gIdCard').value = parsed.idCard;
-              if (parsed.name) document.getElementById('gName').value = parsed.name;
+              if (parsed.name) document.getElementById('gName').value = parsed.name.toLocaleUpperCase('vi-VN');
               if (parsed.dob) document.getElementById('gDob').value = parsed.dob;
+              if (parsed.gender) document.getElementById('gGender').value = parsed.gender;
               if (parsed.idCard || parsed.name || parsed.dob) {
                 if (msg) msg.innerText = "✓ Đã đọc ảnh CCCD bằng OCR. Kiểm tra lại trước khi lưu.";
               } else {
