@@ -526,9 +526,11 @@
       </div>
 
       <div style="display:flex; justify-content:center; gap:8px; margin:8px 0; flex-wrap:wrap;">
-        <button onclick="toggleCameraFacing()" class="btn" style="background:#4f46e5; color:white; padding: 8px 14px; font-weight:bold;">🔄 Đổi Cam</button>
-        <input type="file" id="fileCccdQuick" accept="image/*" onchange="handleFileCCCDQuick(this)" style="display:none;">
-        <button onclick="document.getElementById('fileCccdQuick').click()" class="btn" style="background:#475569; color:white; padding: 8px 14px; font-weight:bold;">🖼 Tải Ảnh CCCD</button>
+        <button onclick="captureCccdDirect()" class="btn" style="background:#16a34a; color:white; padding: 9px 18px; font-weight:900; font-size:.82rem;">📸 CHỤP & ĐỌC CCCD</button>
+        <button onclick="toggleTorch()" id="btnTorch" class="btn" style="background:#d97706; color:white; padding: 8px 12px; font-weight:bold;">💡 Đèn</button>
+        <button onclick="toggleCameraFacing()" class="btn" style="background:#4f46e5; color:white; padding: 8px 12px; font-weight:bold;">🔄 Đổi Cam</button>
+        <input type="file" id="fileCccdQuick" accept="image/*" capture="environment" onchange="handleFileCCCDQuick(this)" style="display:none;">
+        <button onclick="document.getElementById('fileCccdQuick').click()" class="btn" style="background:#475569; color:white; padding: 8px 12px; font-weight:bold;">🖼 Tải Ảnh CCCD</button>
       </div>
 
       <div style="background:#f8fafc; padding:8px; border-radius:4px; border:1px solid var(--border); margin-bottom: 20px;">
@@ -694,6 +696,8 @@
     let localStream = null;
     let isScanning = false;
     let currentCameraFacing = "environment";
+    let cameraTrack = null;
+    let torchEnabled = false;
     let scanTimer = null;
     let persistDebounceTimer = null;
     let currentRoomRef = null;
@@ -1771,7 +1775,7 @@
       refreshDailyReportHistory(true);
 
       const reports = [...dailyReports].sort((a,b) => String(a.date).localeCompare(String(b.date)));
-      const headers = ["Ngày","Hiệu suất","Sức chứa","Vào","Nghỉ","Nam","Nữ","Biến động","Quân số cuối ngày","Phòng bẩn","Phòng biến động","Cập nhật"];
+      const headers = ["Ngày","Hiệu suất","Quân số cuối ngày","Vào","Nghỉ","Biến động","Nam","Nữ","Sức chứa","Phòng bẩn","Phòng biến động","Cập nhật"];
       const todayDisplay = formatReportDate(getLocalDateISO());
       const aoa = [
         ["BÁO CÁO THỐNG KÊ"],
@@ -1784,13 +1788,13 @@
       reports.forEach(r => aoa.push([
         formatReportDate(r.date),
         `${r.performance}%`,
-        r.capacity,
+        r.total,
         r.entered,
         r.retired,
+        r.diff > 0 ? `+${r.diff}` : String(r.diff),
         r.male || 0,
         r.female || 0,
-        r.diff > 0 ? `+${r.diff}` : String(r.diff),
-        r.total,
+        r.capacity,
         r.dirtyRooms || 0,
         r.modifiedRooms || 0,
         r.updatedAt ? new Date(r.updatedAt).toLocaleString("vi-VN") : ""
@@ -1806,19 +1810,21 @@
       ws["A1"] = {t:"s", v:"BÁO CÁO THỐNG KÊ"};
       ws["A2"] = {t:"s", v:"🔎 TÌM NGÀY"};
       ws["B2"] = {t:"s", v:todayDisplay};
-      ws["C2"] = {t:"s", v:"Ngày: DD/MM/YYYY"};
+      ws["C2"] = {t:"s", v:"Nhập ngày DD/MM/YYYY → hàng tương ứng tự tô vàng"};
 
       // Kết quả tra cứu theo đúng ngày DD/MM/YYYY.
       ws["A3"] = {t:"s", v:"Kết quả"};
       ws["B3"] = {f:`IFERROR(MATCH(B2,$A$${firstDataRow}:$A$${lastDataRow},0),"")`};
       ws["C3"] = {t:"s", v:"Hiệu suất"};
       ws["D3"] = {f:`IFERROR(INDEX($B$${firstDataRow}:$B$${lastDataRow},B3),"")`};
-      ws["E3"] = {t:"s", v:"Sức chứa"};
+      ws["E3"] = {t:"s", v:"Quân số"};
       ws["F3"] = {f:`IFERROR(INDEX($C$${firstDataRow}:$C$${lastDataRow},B3),"")`};
       ws["G3"] = {t:"s", v:"Vào"};
       ws["H3"] = {f:`IFERROR(INDEX($D$${firstDataRow}:$D$${lastDataRow},B3),"")`};
       ws["I3"] = {t:"s", v:"Nghỉ"};
       ws["J3"] = {f:`IFERROR(INDEX($E$${firstDataRow}:$E$${lastDataRow},B3),"")`};
+      ws["K3"] = {t:"s", v:"Biến động"};
+      ws["L3"] = {f:`IFERROR(INDEX($F$${firstDataRow}:$F$${lastDataRow},B3),"")`};
 
       // Đánh dấu ngày hiện tại khi mở file; sau khi người dùng đổi B2, Excel sẽ tự đổi hàng vàng bằng conditional formatting.
       const yellowStyle = {fill:{patternType:"solid", fgColor:{rgb:"FFFFFF00"}}, font:{bold:true}};
@@ -2750,7 +2756,8 @@
       const baseVideo = {
         facingMode: { ideal: currentCameraFacing },
         width: { ideal: 1920 },
-        height: { ideal: 1080 }
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30, max: 30 }
       };
 
       try {
@@ -2779,16 +2786,26 @@
       // Cố gắng bật lấy nét liên tục trên các máy có hỗ trợ.
       try {
         const track = localStream.getVideoTracks()[0];
+        cameraTrack = track || null;
         const caps = track && track.getCapabilities ? track.getCapabilities() : {};
         const advanced = {};
         if (Array.isArray(caps.focusMode) && caps.focusMode.includes("continuous")) {
           advanced.focusMode = "continuous";
         }
+        if (Array.isArray(caps.exposureMode) && caps.exposureMode.includes("continuous")) {
+          advanced.exposureMode = "continuous";
+        }
+        if (caps.zoom && typeof caps.zoom.min === "number") {
+          advanced.zoom = Math.min(caps.zoom.max ?? caps.zoom.min, Math.max(caps.zoom.min, caps.zoom.min + (caps.zoom.max - caps.zoom.min) * 0.15));
+        }
         if (Object.keys(advanced).length) await track.applyConstraints({advanced: [advanced]});
+        if (track && caps.torch && torchEnabled) {
+          try { await track.applyConstraints({advanced:[{torch:true}]}); } catch(e) {}
+        }
       } catch(e) {}
 
       isScanning = true;
-      msg.innerText = "Đưa mặt trước hoặc mặt sau CCCD vào camera. QR sẽ được ưu tiên; nếu không có QR, OCR tự đọc Số CCCD + Họ tên + Ngày sinh.";
+      msg.innerText = "Đưa CCCD vào khung rồi bấm 📸 CHỤP & ĐỌC. Hệ thống thử QR trước, sau đó OCR với nhiều chế độ xử lý ảnh.";
       scanVideoFrame();
     }
 
@@ -3061,6 +3078,120 @@
       }
     }
 
+
+    async function captureCccdDirect() {
+      const video = document.getElementById('camVideo');
+      const msg = document.getElementById('camStatusMsg');
+      if (!video || !video.videoWidth) {
+        if (msg) msg.innerText = "Camera chưa sẵn sàng.";
+        return;
+      }
+
+      // Chụp một khung hình độ phân giải cao rồi thử QR trước, OCR sau.
+      const frame = getScannerImageData(video, "ocr");
+      if (!frame) return;
+      if (navigator.vibrate) navigator.vibrate(50);
+      if (msg) msg.innerText = "📸 Đã chụp — đang đọc QR và tăng tương phản để nhận diện CCCD...";
+
+      try {
+        const imageData = frame.ctx.getImageData(0, 0, frame.width, frame.height);
+        const qr = typeof jsQR === "function"
+          ? jsQR(imageData.data, imageData.width, imageData.height, {inversionAttempts:"attemptBoth"})
+          : null;
+
+        if (qr && qr.data) {
+          isScanning = false;
+          parseCccdData(qr.data);
+          if (msg) msg.innerText = "✓ Chụp và đọc QR CCCD thành công.";
+          return;
+        }
+
+        await loadCccdOcrEngine();
+        const variants = [];
+
+        // Biến thể 1: ảnh tăng tương phản.
+        const c1 = document.createElement("canvas");
+        c1.width = frame.width; c1.height = frame.height;
+        const x1 = c1.getContext("2d", {willReadFrequently:true});
+        x1.drawImage(frame.canvas, 0, 0);
+        const d1 = x1.getImageData(0,0,c1.width,c1.height);
+        let min = 255, max = 0;
+        for (let i=0;i<d1.data.length;i+=4) {
+          const g = Math.round(.299*d1.data[i]+.587*d1.data[i+1]+.114*d1.data[i+2]);
+          if (g<min) min=g; if (g>max) max=g;
+        }
+        const range = Math.max(1,max-min);
+        for (let i=0;i<d1.data.length;i+=4) {
+          const g0 = Math.round(.299*d1.data[i]+.587*d1.data[i+1]+.114*d1.data[i+2]);
+          const g = Math.max(0,Math.min(255,Math.round((g0-min)*255/range)));
+          d1.data[i]=d1.data[i+1]=d1.data[i+2]=g;
+        }
+        x1.putImageData(d1,0,0);
+        variants.push(c1);
+
+        // Biến thể 2: ảnh xám nhẹ, giữ chi tiết chữ khi ánh sáng không đều.
+        const c2 = document.createElement("canvas");
+        c2.width = frame.width; c2.height = frame.height;
+        const x2 = c2.getContext("2d", {willReadFrequently:true});
+        x2.filter = "contrast(1.35) brightness(1.12) grayscale(1)";
+        x2.drawImage(frame.canvas,0,0);
+        variants.push(c2);
+
+        let best = null;
+        for (const canvas of variants) {
+          if (msg) msg.innerText = "🔎 Đang đọc mặt CCCD bằng OCR...";
+          const result = await window.Tesseract.recognize(canvas, "vie+eng", {
+            tessedit_pageseg_mode: 6,
+            tessedit_char_whitelist: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/.- "
+          });
+          const parsed = parseCccdOcrText(result?.data?.text || "");
+          const score = (parsed.idCard ? 3 : 0) + (parsed.name ? 2 : 0) + (parsed.dob ? 2 : 0);
+          if (!best || score > best.score) best = {parsed, score};
+          if (score >= 7) break;
+        }
+
+        if (best && best.score > 0) {
+          const p = best.parsed;
+          if (p.idCard) document.getElementById('gIdCard').value = p.idCard;
+          if (p.name) document.getElementById('gName').value = p.name;
+          if (p.dob) document.getElementById('gDob').value = p.dob;
+          isScanning = false;
+          if (navigator.vibrate) navigator.vibrate([60,40,60]);
+          if (msg) msg.innerText = best.score >= 7
+            ? "✓ Đã chụp và nhận diện CCCD: Số CCCD + Họ tên + Ngày sinh."
+            : "⚠ Đã đọc được một phần. Kiểm tra lại thông tin trước khi lưu.";
+          return;
+        }
+
+        if (msg) msg.innerText = "⚠ Chưa đọc rõ. Hãy bật đèn, giữ thẻ thẳng và chụp lại.";
+      } catch (e) {
+        console.warn("captureCccdDirect:", e);
+        if (msg) msg.innerText = "Không xử lý được ảnh chụp. Hãy chụp lại hoặc dùng Tải Ảnh CCCD.";
+      }
+    }
+
+    async function toggleTorch() {
+      const btn = document.getElementById('btnTorch');
+      const track = cameraTrack || localStream?.getVideoTracks?.()[0];
+      if (!track || !track.getCapabilities) {
+        if (btn) btn.innerText = "💡 Không hỗ trợ";
+        return;
+      }
+      const caps = track.getCapabilities();
+      if (!caps.torch) {
+        if (btn) btn.innerText = "💡 Không hỗ trợ";
+        return;
+      }
+      torchEnabled = !torchEnabled;
+      try {
+        await track.applyConstraints({advanced:[{torch:torchEnabled}]});
+        if (btn) btn.innerText = torchEnabled ? "💡 Tắt đèn" : "💡 Đèn";
+      } catch(e) {
+        torchEnabled = !torchEnabled;
+        if (btn) btn.innerText = "💡 Lỗi đèn";
+      }
+    }
+
     function toggleCameraFacing() {
       closeCameraStream();
       currentCameraFacing = currentCameraFacing === "environment" ? "user" : "environment";
@@ -3076,6 +3207,10 @@
         localStream.getTracks().forEach(t => t.stop());
         localStream = null;
       }
+      cameraTrack = null;
+      torchEnabled = false;
+      const torchBtn = document.getElementById('btnTorch');
+      if (torchBtn) torchBtn.innerText = "💡 Đèn";
     }
 
     function closeGlobalScanner() {
@@ -3137,8 +3272,25 @@
             if (msg) msg.innerText = "Đã nhận dạng ảnh CCCD thành công!";
             parseCccdData(code.data);
           } else {
-            if (msg) msg.innerText = "Không tìm thấy mã QR trên ảnh.";
-            alert("Không tìm thấy mã QR trên tệp ảnh. Vui lòng chọn ảnh chụp rõ nét!");
+            if (msg) msg.innerText = "Không có QR — đang thử OCR ảnh CCCD...";
+            loadCccdOcrEngine().then(async () => {
+              const result = await window.Tesseract.recognize(canvas, "vie+eng", {
+                tessedit_pageseg_mode: 6,
+                tessedit_char_whitelist: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁẢÃẠĂẮẰẲẴẶÂẤẦẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/.- "
+              });
+              const parsed = parseCccdOcrText(result?.data?.text || "");
+              if (parsed.idCard) document.getElementById('gIdCard').value = parsed.idCard;
+              if (parsed.name) document.getElementById('gName').value = parsed.name;
+              if (parsed.dob) document.getElementById('gDob').value = parsed.dob;
+              if (parsed.idCard || parsed.name || parsed.dob) {
+                if (msg) msg.innerText = "✓ Đã đọc ảnh CCCD bằng OCR. Kiểm tra lại trước khi lưu.";
+              } else {
+                if (msg) msg.innerText = "⚠ Ảnh chưa đủ rõ để OCR. Hãy chụp lại gần hơn, đủ sáng.";
+                alert("Không đọc rõ CCCD. Vui lòng chụp lại ảnh rõ, thẳng và đủ sáng.");
+              }
+            }).catch(() => {
+              if (msg) msg.innerText = "OCR chưa sẵn sàng. Hãy thử ảnh khác hoặc nhập tay.";
+            });
           }
         };
         img.src = e.target.result;
