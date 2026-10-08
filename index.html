@@ -1775,73 +1775,68 @@
       refreshDailyReportHistory(true);
 
       const reports = [...dailyReports].sort((a,b) => String(a.date).localeCompare(String(b.date)));
-      const headers = ["Ngày","Hiệu suất","Quân số cuối ngày","Vào","Nghỉ","Biến động","Nam","Nữ","Sức chứa","Phòng bẩn","Phòng biến động","Cập nhật"];
+      // Báo cáo ngày chỉ giữ các thông số chính, dễ đọc và dễ tìm.
+      const headers = ["Ngày","Sức chứa","Hiệu suất","Vào","Nghỉ","Nam/Nữ","Quân số cuối ngày","Ghi chú"];
       const todayDisplay = formatReportDate(getLocalDateISO());
+
       const aoa = [
         ["BÁO CÁO THỐNG KÊ"],
         ["🔎 TÌM NGÀY", todayDisplay],
-        ["Kết quả", "", "", "", "", "", "", "", "", ""],
-        ["", "", "", "", "", "", "", "", "", ""],
         headers
       ];
 
       reports.forEach(r => aoa.push([
         formatReportDate(r.date),
-        `${r.performance}%`,
-        r.total,
-        r.entered,
-        r.retired,
-        r.diff > 0 ? `+${r.diff}` : String(r.diff),
-        r.male || 0,
-        r.female || 0,
-        r.capacity,
-        r.dirtyRooms || 0,
-        r.modifiedRooms || 0,
-        r.updatedAt ? new Date(r.updatedAt).toLocaleString("vi-VN") : ""
+        r.capacity ?? "",
+        `${r.performance ?? 0}%`,
+        r.entered ?? 0,
+        r.retired ?? 0,
+        `${r.male || 0}/${r.female || 0}`,
+        r.total ?? 0,
+        r.note || ""
       ]));
 
       const ws = XLSX.utils.aoa_to_sheet(aoa);
+
       ws["!cols"] = [
-        {wch:14},{wch:13},{wch:12},{wch:10},{wch:10},{wch:9},{wch:9},{wch:13},{wch:18},{wch:13},{wch:18},{wch:22}
+        {wch:14}, // Ngày
+        {wch:12}, // Sức chứa
+        {wch:13}, // Hiệu suất
+        {wch:10}, // Vào
+        {wch:10}, // Nghỉ
+        {wch:12}, // Nam/Nữ
+        {wch:19}, // Quân số cuối ngày
+        {wch:32}  // Ghi chú
       ];
 
-      const firstDataRow = 6;
-      const lastDataRow = Math.max(firstDataRow, reports.length + 5);
+      const firstDataRow = 4;
+      const lastDataRow = Math.max(firstDataRow, reports.length + 3);
+
       ws["A1"] = {t:"s", v:"BÁO CÁO THỐNG KÊ"};
       ws["A2"] = {t:"s", v:"🔎 TÌM NGÀY"};
       ws["B2"] = {t:"s", v:todayDisplay};
-      ws["C2"] = {t:"s", v:"Nhập ngày DD/MM/YYYY → hàng tương ứng tự tô vàng"};
 
-      // Kết quả tra cứu theo đúng ngày DD/MM/YYYY.
-      ws["A3"] = {t:"s", v:"Kết quả"};
-      ws["B3"] = {f:`IFERROR(MATCH(B2,$A$${firstDataRow}:$A$${lastDataRow},0),"")`};
-      ws["C3"] = {t:"s", v:"Hiệu suất"};
-      ws["D3"] = {f:`IFERROR(INDEX($B$${firstDataRow}:$B$${lastDataRow},B3),"")`};
-      ws["E3"] = {t:"s", v:"Quân số"};
-      ws["F3"] = {f:`IFERROR(INDEX($C$${firstDataRow}:$C$${lastDataRow},B3),"")`};
-      ws["G3"] = {t:"s", v:"Vào"};
-      ws["H3"] = {f:`IFERROR(INDEX($D$${firstDataRow}:$D$${lastDataRow},B3),"")`};
-      ws["I3"] = {t:"s", v:"Nghỉ"};
-      ws["J3"] = {f:`IFERROR(INDEX($E$${firstDataRow}:$E$${lastDataRow},B3),"")`};
-      ws["K3"] = {t:"s", v:"Biến động"};
-      ws["L3"] = {f:`IFERROR(INDEX($F$${firstDataRow}:$F$${lastDataRow},B3),"")`};
-
-      // Đánh dấu ngày hiện tại khi mở file; sau khi người dùng đổi B2, Excel sẽ tự đổi hàng vàng bằng conditional formatting.
-      const yellowStyle = {fill:{patternType:"solid", fgColor:{rgb:"FFFFFF00"}}, font:{bold:true}};
+      // Chỉ tô vàng ngày đang được tìm. Excel sẽ tự cập nhật khi thay đổi B2.
+      const yellowStyle = {
+        fill:{patternType:"solid", fgColor:{rgb:"FFFFFF00"}},
+        font:{bold:true}
+      };
       reports.forEach((r, i) => {
         if (r.date === getLocalDateISO()) {
           const row = firstDataRow + i;
-          for (let c=0;c<headers.length;c++) {
+          for (let c=0; c<headers.length; c++) {
             const cell = ws[XLSX.utils.encode_cell({r:row-1,c})];
             if (cell) cell.s = yellowStyle;
           }
         }
       });
 
-      ws["!autofilter"] = {ref:`A${firstDataRow}:L${lastDataRow}`};
-      ws["!freeze"] = {xSplit:0,ySplit:5};
+      ws["!autofilter"] = {ref:`A${firstDataRow-1}:H${lastDataRow}`};
+      ws["!freeze"] = {xSplit:0,ySplit:3};
+
       // Lưu thông tin để hàm xuất Excel gắn conditional formatting vào XML.
       ws.__dailyReportLastRow = lastDataRow;
+      ws.__dailyReportFirstRow = firstDataRow;
       XLSX.utils.book_append_sheet(wb, ws, "BaoCaoNgay");
     }
 
@@ -1854,8 +1849,10 @@
       }
 
       const reportWs = wb.Sheets["BaoCaoNgay"];
-      const lastRow = reportWs && reportWs.__dailyReportLastRow ? reportWs.__dailyReportLastRow : 6;
+      const lastRow = reportWs && reportWs.__dailyReportLastRow ? reportWs.__dailyReportLastRow : 4;
+      const firstRow = reportWs && reportWs.__dailyReportFirstRow ? reportWs.__dailyReportFirstRow : 4;
       delete reportWs.__dailyReportLastRow;
+      delete reportWs.__dailyReportFirstRow;
 
       const data = XLSX.write(wb, {bookType:"xlsx", type:"array", compression:true});
       const zip = await JSZip.loadAsync(data);
@@ -1885,10 +1882,38 @@
 
       let stylesXml = await stylesFile.async("string");
       let sheetXml = await sheetFile.async("string");
+      // A1 = tiêu đề báo cáo: đỏ, đậm, cỡ 15.
+      // Style id được tạo ở phần xử lý styles.xml bên dưới.
+
+
+      // SheetJS CE không đảm bảo ghi style cell ra XLSX, nên thêm style A1 trực tiếp vào styles.xml.
+      let titleStyleId = null;
+      const cellXfsMatch = stylesXml.match(/<cellXfs\b[^>]*count="(\d+)"[^>]*>([\s\S]*?)<\/cellXfs>/);
+      if (cellXfsMatch) {
+        const oldCount = Number(cellXfsMatch[1]);
+        const cellXfsBody = cellXfsMatch[2];
+        // font đỏ, 15pt, đậm
+        const fontsMatch = stylesXml.match(/<fonts\b[^>]*count="(\d+)"[^>]*>([\s\S]*?)<\/fonts>/);
+        let titleFontId = 0;
+        if (fontsMatch) {
+          titleFontId = Number(fontsMatch[1]);
+          const newFont = `<font><sz val="15"/><color rgb="FFFF0000"/><name val="Calibri"/><b/></font>`;
+          stylesXml = stylesXml.replace(/<fonts\b([^>]*)count="(\d+)"([^>]*)>([\s\S]*?)<\/fonts>/,
+            (m,a,c,b,body) => `<fonts${a}count="${Number(c)+1}"${b}>${body}${newFont}</fonts>`);
+        }
+        const newXf = `<xf numFmtId="0" fontId="${titleFontId}" fillId="0" borderId="0" xfId="0" applyFont="1"/>`;
+        stylesXml = stylesXml.replace(/<cellXfs\b([^>]*)count="(\d+)"([^>]*)>([\s\S]*?)<\/cellXfs>/,
+          (m,a,c,b,body) => `<cellXfs${a}count="${Number(c)+1}"${b}>${body}${newXf}</cellXfs>`);
+        titleStyleId = oldCount;
+      }
 
       let dxfId = 0;
       const dxfsMatch = stylesXml.match(/<dxfs\b[^>]*count="(\d+)"[^>]*>/);
       const dxf = `<dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/><bgColor indexed="64"/></patternFill></fill><font><b/></font></dxf>`;
+      if (titleStyleId !== null) {
+        sheetXml = sheetXml.replace(/<c r="A1"/, `<c r="A1" s="${titleStyleId}"`);
+      }
+
       if (dxfsMatch) {
         dxfId = Number(dxfsMatch[1]);
         stylesXml = stylesXml.replace(/<dxfs\b([^>]*)count="(\d+)"([^>]*)>/, (m,a,c,b) => `<dxfs${a}count="${Number(c)+1}"${b}>`);
@@ -1898,7 +1923,7 @@
         stylesXml = stylesXml.slice(0,pos) + `<dxfs count="1">${dxf}</dxfs>` + stylesXml.slice(pos);
       }
 
-      const cf = `<conditionalFormatting sqref="A6:L${lastRow}"><cfRule type="expression" dxfId="${dxfId}" priority="1"><formula>$A6=$B$2</formula></cfRule></conditionalFormatting>`;
+      const cf = `<conditionalFormatting sqref="A${firstRow}:H${lastRow}"><cfRule type="expression" dxfId="${dxfId}" priority="1"><formula>$A${firstRow}=$B$2</formula></cfRule></conditionalFormatting>`;
       if (!sheetXml.includes("<conditionalFormatting")) {
         const insertBefore = sheetXml.indexOf("<pageMargins");
         if (insertBefore >= 0) sheetXml = sheetXml.slice(0, insertBefore) + cf + sheetXml.slice(insertBefore);
