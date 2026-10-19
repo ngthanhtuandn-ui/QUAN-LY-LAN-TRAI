@@ -432,13 +432,13 @@
     .day-col.is-off .calendar-date { color: #ef4444 !important; }
     .day-col.is-off .day-shift-select { border-color: #fca5a5 !important; color: #b91c1c !important; font-weight: 700; background: #fff1f2; }
 
-    /* Ca 1: Xanh da trời nhạt (đại diện buổi sáng) */
+    /* Ca 1: Xanh da trời nhạt */
     .day-col.is-ca1 { background: #e0f2fe !important; border-color: #7dd3fc !important; }
     .day-col.is-ca1 .day-name { color: #0369a1 !important; }
     .day-col.is-ca1 .calendar-date { color: #0284c7 !important; }
     .day-col.is-ca1 .day-shift-select { border-color: #38bdf8 !important; color: #0369a1 !important; font-weight: 700; background: #f0f9ff; }
 
-    /* Ca 2: Vàng nhạt (đại diện buổi chiều) */
+    /* Ca 2: Vàng nhạt */
     .day-col.is-ca2 { background: #fef9c3 !important; border-color: #fde047 !important; }
     .day-col.is-ca2 .day-name { color: #854d0e !important; }
     .day-col.is-ca2 .calendar-date { color: #a16207 !important; }
@@ -672,13 +672,13 @@
           <div class="shift-config-grid">
             <div class="shift-config-card">
               <h4>Ca 1 (Sáng)</h4>
-              <div class="time-input-row"><span>Báo In:</span><input type="time" id="cfg_c1_in" onchange="updateShiftTimeConfig()"></div>
-              <div class="time-input-row"><span>Báo Out:</span><input type="time" id="cfg_c1_out" onchange="updateShiftTimeConfig()"></div>
+              <div class="time-input-row"><span>Giờ Vào:</span><input type="time" id="cfg_c1_in" onchange="updateShiftTimeConfig()"></div>
+              <div class="time-input-row"><span>Giờ Ra:</span><input type="time" id="cfg_c1_out" onchange="updateShiftTimeConfig()"></div>
             </div>
             <div class="shift-config-card">
               <h4>Ca 2 (Chiều)</h4>
-              <div class="time-input-row"><span>Báo In:</span><input type="time" id="cfg_c2_in" onchange="updateShiftTimeConfig()"></div>
-              <div class="time-input-row"><span>Báo Out:</span><input type="time" id="cfg_c2_out" onchange="updateShiftTimeConfig()"></div>
+              <div class="time-input-row"><span>Giờ Vào:</span><input type="time" id="cfg_c2_in" onchange="updateShiftTimeConfig()"></div>
+              <div class="time-input-row"><span>Giờ Ra:</span><input type="time" id="cfg_c2_out" onchange="updateShiftTimeConfig()"></div>
             </div>
           </div>
         </div>
@@ -1080,7 +1080,6 @@
       renderSchoolTimetable(); showToast('Đã xóa nội dung buổi học.');
     }
 
-    // XEM NHANH: Hiển thị từng tiết rõ ràng, gắn thẻ Tiết 1, 2 màu vàng nổi bật
     function renderSchoolTodaySummary() {
       const host = document.getElementById('schoolTodaySummary');
       if (!host) return;
@@ -1336,7 +1335,7 @@
       lbl.innerText = selectedSyncWeeks.size === 0 ? 'Chọn tuần...' : `Đã chọn (${selectedSyncWeeks.size} tuần)`;
     }
 
-    // NẠP VÀO LỊCH ĐIỆN THOẠI (Gán màu sắc theo chuẩn Ca 1 / Ca 2)
+    // --- XUẤT LỊCH ĐIỆN THOẠI (BÁO ĐÚNG GIỜ + ĐỔI MÀU CA 1, CA 2, OFF) ---
     function executeSelectedSync() {
       if (selectedSyncWeeks.size === 0) {
         alert('Vui lòng tích chọn ít nhất 1 tuần để đồng bộ!');
@@ -1363,7 +1362,6 @@
         for (let i = 0; i < 7; i++) {
           const dayKey = i === 6 ? 8 : i + 2;
           const shift = shiftsData[dayKey] || 'off';
-          if (shift === 'off') continue;
 
           const dayDate = new Date(wObj.monday);
           dayDate.setDate(wObj.monday.getDate() + i);
@@ -1372,52 +1370,92 @@
           const d = dayDate.getDate();
           const dateStr = `${y}${String(m).padStart(2,'0')}${String(d).padStart(2,'0')}`;
 
-          const rawIn = (shift === 'ca1' ? (shiftTimes.c1_in || '05:15') : (shiftTimes.c2_in || '13:15'));
-          const rawOut = (shift === 'ca1' ? (shiftTimes.c1_out || '14:00') : (shiftTimes.c2_out || '22:00'));
-          const shiftName = shift === 'ca1' ? 'Ca 1 (Sáng)' : 'Ca 2 (Chiều)';
-          const shiftColor = shift === 'ca1' ? '#38bdf8' : '#eab308';
-          const shiftCategory = shift === 'ca1' ? 'Ca Sáng' : 'Ca Chiều';
+          // NẾU LÀ NGÀY OFF: Tạo sự kiện cả ngày màu đỏ nhạt
+          if (shift === 'off') {
+            const nextDay = new Date(dayDate);
+            nextDay.setDate(dayDate.getDate() + 1);
+            const nextDateStr = `${nextDay.getFullYear()}${String(nextDay.getMonth()+1).padStart(2,'0')}${String(nextDay.getDate()).padStart(2,'0')}`;
+            events.push([
+              'BEGIN:VEVENT',
+              `UID:off-${dateStr}-${dayKey}-${Date.now()}@lantrai`,
+              `DTSTAMP:${dateStr}T000000Z`,
+              `DTSTART;VALUE=DATE:${dateStr}`,
+              `DTEND;VALUE=DATE:${nextDateStr}`,
+              `SUMMARY:🏖️ OFF (Nghỉ)`,
+              `DESCRIPTION:Hôm nay nghỉ trực (OFF)`,
+              `COLOR:#ef4444`,
+              `APPLE-CALENDAR-COLOR:#fca5a5`,
+              `X-APPLE-CALENDAR-COLOR:#fca5a5`,
+              `CATEGORIES:Nghỉ,OFF`,
+              'STATUS:CONFIRMED',
+              'TRANSP:TRANSPARENT',
+              'END:VEVENT'
+            ].join('\r\n'));
+            continue;
+          }
+
+          // CẤU HÌNH CHO CA 1 (XANH DA TRỜI) VÀ CA 2 (VÀNG)
+          const isCa1 = (shift === 'ca1');
+          const rawIn = isCa1 ? (shiftTimes.c1_in || '05:15') : (shiftTimes.c2_in || '13:15');
+          const rawOut = isCa1 ? (shiftTimes.c1_out || '14:00') : (shiftTimes.c2_out || '22:00');
+          const shiftLabel = isCa1 ? 'Ca 1' : 'Ca 2';
+          const shiftHex = isCa1 ? '#0284c7' : '#eab308'; // Ca 1 xanh da trời, Ca 2 vàng
+          const categoryName = isCa1 ? 'Ca 1' : 'Ca 2';
 
           const inStartUTC = toUTCICSString(y, m, d, rawIn, 0);
-          const inEndUTC = toUTCICSString(y, m, d, rawIn, 15);
+          const inEndUTC = toUTCICSString(y, m, d, rawIn, 30);
 
           const outStartUTC = toUTCICSString(y, m, d, rawOut, 0);
-          const outEndUTC = toUTCICSString(y, m, d, rawOut, 15);
+          const outEndUTC = toUTCICSString(y, m, d, rawOut, 30);
 
-          // CHECK-IN
+          // SỰ KIỆN VÀO CA: Tên ngắn gọn "Ca 1 (Vào: 05:15)"
           events.push([
             'BEGIN:VEVENT',
-            `UID:checkin-${dateStr}-${dayKey}-${Date.now()}@lantrai`,
+            `UID:shift-in-${dateStr}-${dayKey}-${Date.now()}@lantrai`,
             `DTSTAMP:${inStartUTC}`,
             `DTSTART:${inStartUTC}`,
             `DTEND:${inEndUTC}`,
-            `SUMMARY:⏰ CHECK-IN: ${shiftName} (${rawIn})`,
-            `DESCRIPTION:Đến giờ vào nhận ca làm việc: ${rawIn}`,
-            `COLOR:${shiftColor}`,
-            `CATEGORIES:${shiftCategory}`,
+            `SUMMARY:⏰ ${shiftLabel} (Vào: ${rawIn})`,
+            `DESCRIPTION:Đến giờ nhận ${shiftLabel} làm việc (${rawIn})`,
+            `COLOR:${shiftHex}`,
+            `APPLE-CALENDAR-COLOR:${shiftHex}`,
+            `X-APPLE-CALENDAR-COLOR:${shiftHex}`,
+            `CATEGORIES:${categoryName}`,
             'BEGIN:VALARM',
-            'TRIGGER:-PT0M',
+            'TRIGGER:-PT0S',
+            'ACTION:AUDIO',
+            'ATTACH;VALUE=URI:Chord',
+            'END:VALARM',
+            'BEGIN:VALARM',
+            'TRIGGER:-PT0S',
             'ACTION:DISPLAY',
-            'DESCRIPTION:Đến giờ Check-in!',
+            `DESCRIPTION:Đến giờ vào ${shiftLabel}!`,
             'END:VALARM',
             'END:VEVENT'
           ].join('\r\n'));
 
-          // CHECK-OUT
+          // SỰ KIỆN RA CA: Tên ngắn gọn "Ca 1 (Ra: 14:00)"
           events.push([
             'BEGIN:VEVENT',
-            `UID:checkout-${dateStr}-${dayKey}-${Date.now()}@lantrai`,
+            `UID:shift-out-${dateStr}-${dayKey}-${Date.now()}@lantrai`,
             `DTSTAMP:${outStartUTC}`,
             `DTSTART:${outStartUTC}`,
             `DTEND:${outEndUTC}`,
-            `SUMMARY:⏰ CHECK-OUT: ${shiftName} (${rawOut})`,
-            `DESCRIPTION:Đến giờ kiểm tra bàn giao và Check-out: ${rawOut}`,
-            `COLOR:${shiftColor}`,
-            `CATEGORIES:${shiftCategory}`,
+            `SUMMARY:🏁 ${shiftLabel} (Ra: ${rawOut})`,
+            `DESCRIPTION:Đến giờ hết ${shiftLabel} và bàn giao (${rawOut})`,
+            `COLOR:${shiftHex}`,
+            `APPLE-CALENDAR-COLOR:${shiftHex}`,
+            `X-APPLE-CALENDAR-COLOR:${shiftHex}`,
+            `CATEGORIES:${categoryName}`,
             'BEGIN:VALARM',
-            'TRIGGER:-PT0M',
+            'TRIGGER:-PT0S',
+            'ACTION:AUDIO',
+            'ATTACH;VALUE=URI:Chord',
+            'END:VALARM',
+            'BEGIN:VALARM',
+            'TRIGGER:-PT0S',
             'ACTION:DISPLAY',
-            'DESCRIPTION:Đến giờ Check-out!',
+            `DESCRIPTION:Đến giờ kết thúc ${shiftLabel}!`,
             'END:VALARM',
             'END:VEVENT'
           ].join('\r\n'));
@@ -1425,7 +1463,7 @@
       });
 
       if (events.length === 0) {
-        alert('Không có ca làm việc nào trong tuần đã chọn!');
+        alert('Không có lịch làm việc nào được chọn!');
         return;
       }
 
@@ -1434,7 +1472,9 @@
         'VERSION:2.0',
         'PRODID:-//LanTrai//Shift//VI',
         'CALSCALE:GREGORIAN',
-        'METHOD:PUBLISH'
+        'METHOD:PUBLISH',
+        'X-WR-CALNAME:Lịch Ca Trực',
+        'X-WR-TIMEZONE:Asia/Ho_Chi_Minh'
       ].join('\r\n');
 
       const icsData = `${icsHeader}\r\n${events.join('\r\n')}\r\nEND:VCALENDAR`;
@@ -1447,7 +1487,7 @@
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(link.href);
-      showToast('Đang tải tệp lịch! Mở tệp để thêm vào điện thoại.');
+      showToast('Đang tải file lịch! Mở file để nạp vào điện thoại.');
     }
 
     // --- 6. VIỆC CẦN XỬ LÝ & BÁO ĐỘNG HỆ THỐNG ---
