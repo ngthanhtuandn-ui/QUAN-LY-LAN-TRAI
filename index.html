@@ -508,6 +508,18 @@
       white-space: nowrap;
     }
 
+    .btn-sync-split {
+      background: linear-gradient(135deg, #059669, #047857);
+      color: white;
+      border: none;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
     .shift-settings-box { background: #f8fafc; border: 1px solid var(--border); border-radius: 12px; padding: 10px; margin-top: 10px; }
     .shift-settings-title { font-size: 0.8rem; font-weight: 700; color: var(--primary-dark); margin-bottom: 8px; display: flex; justify-content: space-between; }
     .shift-config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -658,8 +670,11 @@
               </button>
               <div class="multiselect-dropdown" id="syncDropdownMenu"></div>
             </div>
-            <button class="btn-sync-submit" onclick="executeSelectedSync()">
-              🔔 Nạp Vào Lịch ĐT
+            <button class="btn-sync-submit" onclick="executeSelectedSync('all')" title="Xuất toàn bộ lịch ca">
+              🔔 Nạp Lịch ĐT
+            </button>
+            <button class="btn-sync-split" onclick="executeSelectedSync('split')" title="Tải riêng rẽ từng ca để đặt màu chuẩn tuyệt đối trên Google">
+              🎨 Tách Màu Google
             </button>
           </div>
         </div>
@@ -1335,22 +1350,80 @@
       lbl.innerText = selectedSyncWeeks.size === 0 ? 'Chọn tuần...' : `Đã chọn (${selectedSyncWeeks.size} tuần)`;
     }
 
-    // --- XUẤT LỊCH ĐIỆN THOẠI (BÁO ĐÚNG GIỜ + ĐỔI MÀU CA 1, CA 2, OFF) ---
-    function executeSelectedSync() {
+    // --- BỘ XUẤT LỊCH ĐIỆN THOẠI & GOOGLE CALENDAR ---
+    function executeSelectedSync(mode = 'all') {
       if (selectedSyncWeeks.size === 0) {
         alert('Vui lòng tích chọn ít nhất 1 tuần để đồng bộ!');
         return;
       }
       const weekIndices = Array.from(selectedSyncWeeks).sort((a, b) => a - b);
-      exportToICSCalendarList(weekIndices);
+      if (mode === 'all') {
+        exportToICSCalendarList(weekIndices);
+      } else {
+        exportSplitFilesForGoogle(weekIndices);
+      }
+    }
+
+    function buildICSEventString(item) {
+      // Báo đúng giờ với -PT0S, tiêu đề gọn nhẹ
+      return [
+        'BEGIN:VEVENT',
+        `UID:${item.uid}@lantrai`,
+        `DTSTAMP:${item.dtstamp}`,
+        item.isAllDay ? `DTSTART;VALUE=DATE:${item.start}` : `DTSTART:${item.start}`,
+        item.isAllDay ? `DTEND;VALUE=DATE:${item.end}` : `DTEND:${item.end}`,
+        `SUMMARY:${item.summary}`,
+        `DESCRIPTION:${item.desc}`,
+        `COLOR:${item.color}`,
+        `X-COLOR:${item.color}`,
+        `APPLE-CALENDAR-COLOR:${item.color}`,
+        `X-APPLE-CALENDAR-COLOR:${item.color}`,
+        `CATEGORIES:${item.category}`,
+        'STATUS:CONFIRMED',
+        ...(item.isAllDay ? [] : [
+          'BEGIN:VALARM',
+          'TRIGGER:-PT0S',
+          'ACTION:AUDIO',
+          'ATTACH;VALUE=URI:Chord',
+          'END:VALARM',
+          'BEGIN:VALARM',
+          'TRIGGER:-PT0S',
+          'ACTION:DISPLAY',
+          `DESCRIPTION:${item.summary}`,
+          'END:VALARM'
+        ]),
+        'END:VEVENT'
+      ].join('\r\n');
+    }
+
+    function downloadICSFile(filename, eventsContent, calName = 'Lịch Ca Trực') {
+      const icsHeader = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//LanTrai//Shift//VI',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH',
+        `X-WR-CALNAME:${calName}`,
+        'X-WR-TIMEZONE:Asia/Ho_Chi_Minh'
+      ].join('\r\n');
+
+      const icsData = `${icsHeader}\r\n${eventsContent}\r\nEND:VCALENDAR`;
+      const blob = new Blob([icsData], { type: 'text/calendar;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(blob);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(link.href);
     }
 
     function exportToICSCalendarList(weekIndices) {
       let events = [];
 
-      function toUTCICSString(year, month, day, timeStr, addMinutes = 0) {
+      function toUTCICSString(year, month, day, timeStr) {
         const [h, m] = timeStr.split(':').map(Number);
-        const dateObj = new Date(year, month - 1, day, h, m + addMinutes, 0);
+        const dateObj = new Date(year, month - 1, day, h, m, 0);
         return dateObj.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
       }
 
@@ -1370,124 +1443,143 @@
           const d = dayDate.getDate();
           const dateStr = `${y}${String(m).padStart(2,'0')}${String(d).padStart(2,'0')}`;
 
-          // NẾU LÀ NGÀY OFF: Tạo sự kiện cả ngày màu đỏ nhạt
           if (shift === 'off') {
             const nextDay = new Date(dayDate);
             nextDay.setDate(dayDate.getDate() + 1);
             const nextDateStr = `${nextDay.getFullYear()}${String(nextDay.getMonth()+1).padStart(2,'0')}${String(nextDay.getDate()).padStart(2,'0')}`;
-            events.push([
-              'BEGIN:VEVENT',
-              `UID:off-${dateStr}-${dayKey}-${Date.now()}@lantrai`,
-              `DTSTAMP:${dateStr}T000000Z`,
-              `DTSTART;VALUE=DATE:${dateStr}`,
-              `DTEND;VALUE=DATE:${nextDateStr}`,
-              `SUMMARY:🏖️ OFF (Nghỉ)`,
-              `DESCRIPTION:Hôm nay nghỉ trực (OFF)`,
-              `COLOR:#ef4444`,
-              `APPLE-CALENDAR-COLOR:#fca5a5`,
-              `X-APPLE-CALENDAR-COLOR:#fca5a5`,
-              `CATEGORIES:Nghỉ,OFF`,
-              'STATUS:CONFIRMED',
-              'TRANSP:TRANSPARENT',
-              'END:VEVENT'
-            ].join('\r\n'));
+            events.push(buildICSEventString({
+              uid: `off-${dateStr}-${dayKey}`,
+              dtstamp: `${dateStr}T000000Z`,
+              start: dateStr,
+              end: nextDateStr,
+              summary: '🏖️ OFF (Nghỉ)',
+              desc: 'Hôm nay nghỉ ca trực',
+              color: '#ef4444',
+              category: 'OFF',
+              isAllDay: true
+            }));
             continue;
           }
 
-          // CẤU HÌNH CHO CA 1 (XANH DA TRỜI) VÀ CA 2 (VÀNG)
           const isCa1 = (shift === 'ca1');
           const rawIn = isCa1 ? (shiftTimes.c1_in || '05:15') : (shiftTimes.c2_in || '13:15');
           const rawOut = isCa1 ? (shiftTimes.c1_out || '14:00') : (shiftTimes.c2_out || '22:00');
           const shiftLabel = isCa1 ? 'Ca 1' : 'Ca 2';
-          const shiftHex = isCa1 ? '#0284c7' : '#eab308'; // Ca 1 xanh da trời, Ca 2 vàng
-          const categoryName = isCa1 ? 'Ca 1' : 'Ca 2';
+          const shiftColor = isCa1 ? '#0284c7' : '#eab308'; // Xanh da trời vs Vàng
 
-          const inStartUTC = toUTCICSString(y, m, d, rawIn, 0);
-          const inEndUTC = toUTCICSString(y, m, d, rawIn, 30);
+          const inUTC = toUTCICSString(y, m, d, rawIn);
+          const outUTC = toUTCICSString(y, m, d, rawOut);
 
-          const outStartUTC = toUTCICSString(y, m, d, rawOut, 0);
-          const outEndUTC = toUTCICSString(y, m, d, rawOut, 30);
+          // Sự kiện Vào ca: Thay "CHECK-IN" dài dòng bằng "Ca 1 (Vào)"
+          events.push(buildICSEventString({
+            uid: `in-${dateStr}-${dayKey}`,
+            dtstamp: inUTC,
+            start: inUTC,
+            end: inUTC,
+            summary: `⏰ ${shiftLabel} (Vào: ${rawIn})`,
+            desc: `Đến giờ vào nhận ${shiftLabel} trực`,
+            color: shiftColor,
+            category: shiftLabel,
+            isAllDay: false
+          }));
 
-          // SỰ KIỆN VÀO CA: Tên ngắn gọn "Ca 1 (Vào: 05:15)"
-          events.push([
-            'BEGIN:VEVENT',
-            `UID:shift-in-${dateStr}-${dayKey}-${Date.now()}@lantrai`,
-            `DTSTAMP:${inStartUTC}`,
-            `DTSTART:${inStartUTC}`,
-            `DTEND:${inEndUTC}`,
-            `SUMMARY:⏰ ${shiftLabel} (Vào: ${rawIn})`,
-            `DESCRIPTION:Đến giờ nhận ${shiftLabel} làm việc (${rawIn})`,
-            `COLOR:${shiftHex}`,
-            `APPLE-CALENDAR-COLOR:${shiftHex}`,
-            `X-APPLE-CALENDAR-COLOR:${shiftHex}`,
-            `CATEGORIES:${categoryName}`,
-            'BEGIN:VALARM',
-            'TRIGGER:-PT0S',
-            'ACTION:AUDIO',
-            'ATTACH;VALUE=URI:Chord',
-            'END:VALARM',
-            'BEGIN:VALARM',
-            'TRIGGER:-PT0S',
-            'ACTION:DISPLAY',
-            `DESCRIPTION:Đến giờ vào ${shiftLabel}!`,
-            'END:VALARM',
-            'END:VEVENT'
-          ].join('\r\n'));
-
-          // SỰ KIỆN RA CA: Tên ngắn gọn "Ca 1 (Ra: 14:00)"
-          events.push([
-            'BEGIN:VEVENT',
-            `UID:shift-out-${dateStr}-${dayKey}-${Date.now()}@lantrai`,
-            `DTSTAMP:${outStartUTC}`,
-            `DTSTART:${outStartUTC}`,
-            `DTEND:${outEndUTC}`,
-            `SUMMARY:🏁 ${shiftLabel} (Ra: ${rawOut})`,
-            `DESCRIPTION:Đến giờ hết ${shiftLabel} và bàn giao (${rawOut})`,
-            `COLOR:${shiftHex}`,
-            `APPLE-CALENDAR-COLOR:${shiftHex}`,
-            `X-APPLE-CALENDAR-COLOR:${shiftHex}`,
-            `CATEGORIES:${categoryName}`,
-            'BEGIN:VALARM',
-            'TRIGGER:-PT0S',
-            'ACTION:AUDIO',
-            'ATTACH;VALUE=URI:Chord',
-            'END:VALARM',
-            'BEGIN:VALARM',
-            'TRIGGER:-PT0S',
-            'ACTION:DISPLAY',
-            `DESCRIPTION:Đến giờ kết thúc ${shiftLabel}!`,
-            'END:VALARM',
-            'END:VEVENT'
-          ].join('\r\n'));
+          // Sự kiện Ra ca: Thay "CHECK-OUT" bằng "Ca 1 (Ra)"
+          events.push(buildICSEventString({
+            uid: `out-${dateStr}-${dayKey}`,
+            dtstamp: outUTC,
+            start: outUTC,
+            end: outUTC,
+            summary: `🏁 ${shiftLabel} (Ra: ${rawOut})`,
+            desc: `Đến giờ kết thúc ${shiftLabel} trực`,
+            color: shiftColor,
+            category: shiftLabel,
+            isAllDay: false
+          }));
         }
       });
 
       if (events.length === 0) {
-        alert('Không có lịch làm việc nào được chọn!');
+        alert('Không có lịch nào được chọn!');
         return;
       }
 
-      const icsHeader = [
-        'BEGIN:VCALENDAR',
-        'VERSION:2.0',
-        'PRODID:-//LanTrai//Shift//VI',
-        'CALSCALE:GREGORIAN',
-        'METHOD:PUBLISH',
-        'X-WR-CALNAME:Lịch Ca Trực',
-        'X-WR-TIMEZONE:Asia/Ho_Chi_Minh'
-      ].join('\r\n');
+      downloadICSFile('lich_ca_truc_chung.ics', events.join('\r\n'));
+      showToast('Đã tải lịch! Bạn xóa lịch cũ trên Google rồi nhập file mới vào nhé.');
+    }
 
-      const icsData = `${icsHeader}\r\n${events.join('\r\n')}\r\nEND:VCALENDAR`;
+    // TÍNH NĂNG TÁCH MÀU CHUYÊN BIỆT CHO GOOGLE CALENDAR
+    function exportSplitFilesForGoogle(weekIndices) {
+      let eventsCa1 = [], eventsCa2 = [], eventsOff = [];
 
-      const blob = new Blob([icsData], { type: 'text/calendar;charset=utf-8' });
-      const link = document.createElement('a');
-      link.href = window.URL.createObjectURL(blob);
-      link.setAttribute('download', `lich_ca_truc.ics`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(link.href);
-      showToast('Đang tải file lịch! Mở file để nạp vào điện thoại.');
+      function toUTCICSString(year, month, day, timeStr) {
+        const [h, m] = timeStr.split(':').map(Number);
+        const dateObj = new Date(year, month - 1, day, h, m, 0);
+        return dateObj.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+      }
+
+      weekIndices.forEach(wIdx => {
+        const wObj = monthWeeksList[wIdx];
+        if (!wObj) return;
+        const shiftsData = getShiftsForWeekIndex(wIdx);
+
+        for (let i = 0; i < 7; i++) {
+          const dayKey = i === 6 ? 8 : i + 2;
+          const shift = shiftsData[dayKey] || 'off';
+          const dayDate = new Date(wObj.monday);
+          dayDate.setDate(wObj.monday.getDate() + i);
+          const y = dayDate.getFullYear();
+          const m = dayDate.getMonth() + 1;
+          const d = dayDate.getDate();
+          const dateStr = `${y}${String(m).padStart(2,'0')}${String(d).padStart(2,'0')}`;
+
+          if (shift === 'off') {
+            const nextDay = new Date(dayDate);
+            nextDay.setDate(dayDate.getDate() + 1);
+            const nextDateStr = `${nextDay.getFullYear()}${String(nextDay.getMonth()+1).padStart(2,'0')}${String(nextDay.getDate()).padStart(2,'0')}`;
+            eventsOff.push(buildICSEventString({
+              uid: `off-${dateStr}-${dayKey}`, dtstamp: `${dateStr}T000000Z`,
+              start: dateStr, end: nextDateStr, summary: '🏖️ OFF (Nghỉ)',
+              desc: 'Hôm nay nghỉ ca trực', color: '#ef4444', category: 'OFF', isAllDay: true
+            }));
+          } else if (shift === 'ca1') {
+            const rawIn = shiftTimes.c1_in || '05:15';
+            const rawOut = shiftTimes.c1_out || '14:00';
+            const inUTC = toUTCICSString(y, m, d, rawIn);
+            const outUTC = toUTCICSString(y, m, d, rawOut);
+            eventsCa1.push(buildICSEventString({
+              uid: `c1-in-${dateStr}-${dayKey}`, dtstamp: inUTC, start: inUTC, end: inUTC,
+              summary: `⏰ Ca 1 (Vào: ${rawIn})`, desc: 'Giờ vào Ca 1', color: '#0284c7', category: 'Ca 1', isAllDay: false
+            }));
+            eventsCa1.push(buildICSEventString({
+              uid: `c1-out-${dateStr}-${dayKey}`, dtstamp: outUTC, start: outUTC, end: outUTC,
+              summary: `🏁 Ca 1 (Ra: ${rawOut})`, desc: 'Giờ ra Ca 1', color: '#0284c7', category: 'Ca 1', isAllDay: false
+            }));
+          } else if (shift === 'ca2') {
+            const rawIn = shiftTimes.c2_in || '13:15';
+            const rawOut = shiftTimes.c2_out || '22:00';
+            const inUTC = toUTCICSString(y, m, d, rawIn);
+            const outUTC = toUTCICSString(y, m, d, rawOut);
+            eventsCa2.push(buildICSEventString({
+              uid: `c2-in-${dateStr}-${dayKey}`, dtstamp: inUTC, start: inUTC, end: inUTC,
+              summary: `⏰ Ca 2 (Vào: ${rawIn})`, desc: 'Giờ vào Ca 2', color: '#eab308', category: 'Ca 2', isAllDay: false
+            }));
+            eventsCa2.push(buildICSEventString({
+              uid: `c2-out-${dateStr}-${dayKey}`, dtstamp: outUTC, start: outUTC, end: outUTC,
+              summary: `🏁 Ca 2 (Ra: ${rawOut})`, desc: 'Giờ ra Ca 2', color: '#eab308', category: 'Ca 2', isAllDay: false
+            }));
+          }
+        }
+      });
+
+      if (eventsCa1.length > 0) downloadICSFile('ca_1_xanh_duong.ics', eventsCa1.join('\r\n'), 'Ca 1 (Sáng)');
+      setTimeout(() => {
+        if (eventsCa2.length > 0) downloadICSFile('ca_2_vang.ics', eventsCa2.join('\r\n'), 'Ca 2 (Chiều)');
+      }, 500);
+      setTimeout(() => {
+        if (eventsOff.length > 0) downloadICSFile('ngay_off_do.ics', eventsOff.join('\r\n'), 'Lịch Nghỉ (OFF)');
+      }, 1000);
+
+      alert('Đã tải 3 tệp riêng rẽ (Ca 1, Ca 2, OFF).\nMẹo Google Lịch: Tạo 3 lịch riêng ứng với màu Xanh, Vàng, Đỏ rồi nhập tệp tương ứng vào, bạn sẽ có màu sắc chuẩn 100% không bao giờ bị đổi màu!');
     }
 
     // --- 6. VIỆC CẦN XỬ LÝ & BÁO ĐỘNG HỆ THỐNG ---
